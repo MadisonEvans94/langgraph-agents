@@ -14,7 +14,7 @@ class Agent(ABC):
         
         :param save_path: Optional path to save the image.
         """
-        graph_image = self.agent.get_graph().draw_mermaid_png(
+        graph_image = self.state_graph.get_graph().draw_mermaid_png(
             draw_method=MermaidDrawMethod.API)
         image = Image(graph_image)
 
@@ -28,7 +28,7 @@ class Agent(ABC):
             print(f"Workflow visualization saved at: {save_path}")
     
     @abstractmethod
-    def compile_graph(self):
+    def build_graph(self):
         """
         method for compiling graph and creating executable agent
         """

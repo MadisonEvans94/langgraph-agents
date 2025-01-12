@@ -3,21 +3,19 @@ import logging
 from typing import List
 from dotenv import load_dotenv
 from tqdm import tqdm
-from datasets import Dataset
-
 from langchain_experimental.text_splitter import SemanticChunker
 from langchain_core.documents import Document
-from langchain_milvus import Milvus
+from langchain_chroma import Chroma
 from langchain_openai import OpenAIEmbeddings
 from pdfminer.high_level import extract_text
-
-from constants import CONNECTION_ARGS, COLLECTION_NAME, BATCH_SIZE, SOURCE_DIR, EMBEDDING_MODEL
+from constants import COLLECTION_NAME, BATCH_SIZE, SOURCE_DIR, EMBEDDING_MODEL
 
 ###############################################################################
 # Config
 ###############################################################################
 
-
+# Directory to store the Chroma database locally during development
+CHROMA_PERSIST_DIR = "./chroma_db"
 
 ###############################################################################
 # Setup Logging
@@ -90,20 +88,18 @@ def ingest_documents():
             chunk.metadata.update(doc.metadata)
         all_docs.extend(chunks)
 
-    # Prepare Milvus vector store
-    vector_store = Milvus(
-        embedding_function=embeddings,
+    # Prepare Chroma vector store
+    vector_store = Chroma(
         collection_name=COLLECTION_NAME,
-        connection_args=CONNECTION_ARGS,
-        drop_old=True,
-        auto_id=True
+        embedding_function=embeddings,
+        persist_directory=CHROMA_PERSIST_DIR,
     )
 
-    # Ingest documents into Milvus in batches
+    # Ingest documents into Chroma in batches
     logging.info(f"Total number of chunked Documents: {len(all_docs)}")
-    for i in tqdm(range(0, len(all_docs), BATCH_SIZE), desc="Ingesting to Milvus"):
+    for i in tqdm(range(0, len(all_docs), BATCH_SIZE), desc="Ingesting to Chroma"):
         batch = all_docs[i: i + BATCH_SIZE]
-        vector_store.add_documents(batch)
+        vector_store.add_documents(documents=batch)
 
     logging.info("Data ingestion complete!")
 

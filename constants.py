@@ -6,7 +6,7 @@ CONNECTION_ARGS = {
 }
 
 # COLLECTION_NAME = "qna_collection"  # Replace with your desired collection name
-COLLECTION_NAME = "clapnq_collection"
+COLLECTION_NAME = "madison_test_collection"
 
 VECTOR_DIM = 1536  # Example dimension size for embeddings
 PARTITION_TAG = "default_partition"  # Optional: Specify a partition tag

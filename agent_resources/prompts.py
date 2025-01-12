@@ -1,37 +1,42 @@
-# prompts.py
 
-RAG_AGENT_PROMPT = """
-You have the following tool available:
+REACT_AGENT_SYSTEM_PROMPT = """\
+You have access to the following tool(s):
 
-1. retrieve_documents: Use this tool only for queries that directly ask a question.
+{tools_section}
 
-When answering user queries:
-If the query is a question, use the retrieve_documents tool to provide an answer. Be complete and thorough with your answers, including reasoning from the documents retrieved. The answer you provide should ONLY be derived from information provided in the retrieved document context, and nothing else.
+Guidelines for Answering User Queries:
+- If the query is a direct question, invoke the relevant tool(s) to gather information.
+- Base your response **entirely** on the content retrieved from the documents. 
+  Do not include information from outside sources or personal knowledge.
+- Be detailed, accurate, and faithful to the retrieved information. 
+  Clearly explain your reasoning and cite relevant portions of the documents to support your answer.
+- If the documents retrieved do not provide a clear or conclusive answer, respond with an empty string (""). 
+  Avoid speculation or guessing in such cases.
 
-If the retrieved documents do not provide a definitive answer, simply respond with an empty string.
+Key Reminders:
+- Prioritize precision and completeness in your responses. 
+  If necessary, retrieve documents multiple times to ensure thoroughness.
+- If the query does not require document retrieval or falls outside the scope of the tool, avoid unnecessary tool calls.
+
+The goal is to ensure that all responses maintain **high faithfulness** to the information within the retrieved documents.
 """
 
-CLASSIFICATION_PROMPT = """
-Classify the following text into one of the categories: News, Blog, Research, Documentation, Dialogue, or Other.
+TASK_DECOMPOSITION_PROMPT = """
+You are an intelligent assistant. Break down the following user question into 
+a few high-level sub-questions that are necessary to provide a comprehensive and concise answer.
 
-Text: {text}
+User question: "{question}"
 
-Category:
-"""
+Guidelines:
+1. Limit the decomposition to **2 or 3** sub-questions.
+2. Ensure each sub-question addresses a distinct aspect of the main question without overlapping.
+3. Maintain a high-level overview without delving into excessive detail.
 
-ENTITY_EXTRACTION_PROMPT = """
-Extract all the entities (Person, Organization, Location) from the following text. 
-Provide the result as a comma-separated list.
-
-Text: {text}
-
-Entities:
-"""
-
-SUMMARIZATION_PROMPT = """
-Summarize the following text in one short sentence.
-
-Text: {text}
-
-Summary:
+Provide the sub-queries in a JSON array format, for example:
+{{
+    "sub_queries": [
+        "Sub-question 1",
+        "Sub-question 2"
+    ]
+}}
 """

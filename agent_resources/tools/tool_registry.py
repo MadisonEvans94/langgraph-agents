@@ -3,18 +3,18 @@ from langchain.tools import BaseTool
 from langchain_community.tools.tavily_search import TavilySearchResults
 from .retrieve_documents import RetrieveDocuments  
 from langchain_openai import OpenAIEmbeddings
-from langchain_milvus import Milvus
-
+from langchain_chroma import Chroma  # Import Chroma for vector store
+from constants import COLLECTION_NAME, EMBEDDING_MODEL
+from dotenv import load_dotenv
+load_dotenv()
 # TODO: Place embeddings and vector store in a separate config file
-embeddings = OpenAIEmbeddings()
-milvus_vector_store = Milvus(
+embeddings = OpenAIEmbeddings(model=EMBEDDING_MODEL)
+
+# Initialize Chroma vector store
+chroma_vector_store = Chroma(
     embedding_function=embeddings,
-    collection_name="collection_name",
-    connection_args={
-        "host": "localhost",  
-        "port": "19530"       
-    },
-    auto_id=True
+    collection_name=COLLECTION_NAME,
+    persist_directory="./chroma_db"  # Ensure this matches the directory used in your ingestion script
 )
 
 class ToolRegistry:
@@ -26,7 +26,7 @@ class ToolRegistry:
         'tavily_search': TavilySearchResults(),
         'retrieve_documents': RetrieveDocuments(
             embeddings=embeddings,
-            vector_store=milvus_vector_store
+            vector_store=chroma_vector_store
         )
     }
 
