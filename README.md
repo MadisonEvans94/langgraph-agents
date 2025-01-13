@@ -11,21 +11,11 @@ agent_resources/
     base_agent.py
     agent_factory.py
     agents/
-        classification_agent/
-            classification_agent.py
-            nodes.py
-            classification_agent_workflow.png
-        task_planner_agent/
-            task_planner_agent.py
-            nodes.py
-            task_planner_agent_workflow.png
-        web_search_agent/
-            web_search_agent.py
-            nodes.py
-            web_search_agent_workflow.png
+        conversational_agent/
+        react_agent/
     tools/
         tool_registry.py
-        rag_tool.py
+        retrieve_documents.py
 ```
 
 ---
@@ -112,10 +102,8 @@ Upon running the script, you'll be prompted to select an agent type:
 
 ```plaintext
 Available Agent Types:
-1. web_search_agent
-2. classification_agent
-3. task_planner_agent
-Enter the number corresponding to the agent you want to visualize: 
+1. conversational_agent
+2. react_agent
 ```
 
 Type the desired agent name and press Enter.
@@ -145,7 +133,7 @@ You:
         - **`<agent_name>_workflow.png`**: A visual representation (DAG) of the agent's workflow.
     - **`tools/`**: Contains tool implementations and a registry for managing and retrieving tools. This includes:
         - **`tool_registry.py`**: A registry/factory class for registering and retrieving tools.
-        - **`rag_tool.py`**: An example of a custom tool that can be integrated into agents.
+        - **`retrieve_documents.py`**: An example of a custom tool that can be integrated into agents.
 
 ---
 
@@ -294,7 +282,7 @@ class Agent(ABC):
             print(f"Workflow visualization saved at: {save_path}")
 
     @abstractmethod
-    def compile_graph(self):
+    def build_graph(self):
         """
         Abstract method for compiling the graph and creating an executable agent.
         """
@@ -312,7 +300,7 @@ class Agent(ABC):
 #### **Key Components**
 
 - **Abstract Methods**:
-    - `compile_graph()`: Must be implemented to define and compile the agent's workflow graph.
+    - `build_graph()`: Must be implemented to define and compile the agent's workflow graph.
     - `run(message)`: Must be implemented to define how the agent processes input messages.
 - **Visualization Method**:
     - `visualize_workflow(save_path)`: Generates a visual representation of the agent's workflow using Mermaid diagrams. Optionally saves the image to a specified path.
@@ -342,7 +330,7 @@ class MyAgent(Agent):
 		self.memory = memory
 		self.agent = self.compile_graph()
 
-	def compile_graph(self):
+	def build_graph(self):
 		# Define and compile the graph here
 		pass
 
@@ -382,7 +370,7 @@ In the `compile_graph()` method, create a `StateGraph`, add nodes and edges, and
 ```python
 from langgraph.graph import StateGraph, END
 
-def compile_graph(self):
+def build_graph(self):
 	workflow = StateGraph(State)
 
 	# Add nodes to the graph
