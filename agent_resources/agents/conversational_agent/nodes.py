@@ -3,13 +3,13 @@ from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.language_models.chat_models import BaseChatModel
 from langgraph.graph import MessagesState
 
-def llm_node(state: MessagesState, llm: BaseChatModel) -> MessagesState:
+def llm_node(state: MessagesState, llm: BaseChatModel) -> dict:
     """
     Node function to generate a response using the LLM directly.
     """
     if llm is None:
         logging.info("LLM is None in llm_node, returning state as-is.")
-        return state
+        return {}
 
     # Build the conversation prompt from existing messages
     full_context = ""
@@ -19,10 +19,8 @@ def llm_node(state: MessagesState, llm: BaseChatModel) -> MessagesState:
         elif isinstance(msg, AIMessage):
             full_context += f"AI: {msg.content}\n"
 
+    # Invoke LLM with the full conversation context
     answer_msg = llm.invoke([HumanMessage(content=full_context)])
 
-    # Append the new AIMessage
-    new_messages = state["messages"] + [
-        AIMessage(content=answer_msg.content)
-    ]
-    return {"messages": new_messages}
+    # Return the new AI message
+    return {"messages": [AIMessage(content=answer_msg.content)]}
