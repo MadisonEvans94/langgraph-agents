@@ -10,16 +10,10 @@ from langchain_openai import OpenAIEmbeddings
 from pdfminer.high_level import extract_text
 from constants import COLLECTION_NAME, BATCH_SIZE, SOURCE_DIR, EMBEDDING_MODEL
 
-###############################################################################
-# Config
-###############################################################################
 
 # Directory to store the Chroma database locally during development
 CHROMA_PERSIST_DIR = "./chroma_db"
 
-###############################################################################
-# Setup Logging
-###############################################################################
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
@@ -30,10 +24,6 @@ load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY not set in environment!")
-
-###############################################################################
-# Document Loading
-###############################################################################
 
 def load_documents(source_dir: str) -> List[Document]:
     documents = []
@@ -52,10 +42,6 @@ def load_documents(source_dir: str) -> List[Document]:
         else:
             logging.warning(f"Unsupported file type: {filename}, skipping...")
     return documents
-
-###############################################################################
-# Ingestion Pipeline
-###############################################################################
 
 def ingest_documents():
     # Load documents from SOURCE_DIR
@@ -103,8 +89,5 @@ def ingest_documents():
 
     logging.info("Data ingestion complete!")
 
-###############################################################################
-# Main Execution
-###############################################################################
 if __name__ == "__main__":
     ingest_documents()

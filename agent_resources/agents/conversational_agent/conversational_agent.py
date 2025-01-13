@@ -1,23 +1,26 @@
 import logging
 from functools import partial
+import uuid
 
 from langchain_core.messages import BaseMessage, AIMessage
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 
 from agent_resources.base_agent import Agent
-from .nodes import State, llm_node
+from .nodes import llm_node
+from langgraph.graph import MessagesState
 
 logger = logging.getLogger(__name__)
 
 class ConversationalAgent(Agent):
-    def __init__(self, llm=None, memory=None):
+    def __init__(self, llm=None, memory=None, thread_id=None):
         self.llm = llm
         self.memory = memory if memory else MemorySaver()
+        self.thread_id = thread_id if thread_id else 'default'
         self.build_graph()
 
     def build_graph(self):
-        state_graph = StateGraph(State)
+        state_graph = StateGraph(MessagesState)
 
         # add nodes 
         state_graph.add_node("start_node", lambda state: state)
@@ -34,10 +37,11 @@ class ConversationalAgent(Agent):
         self.state_graph = state_graph.compile(checkpointer=self.memory)
 
     def run(self, message: BaseMessage):
+     
         try:
             config = {
                 "configurable": {
-                    "thread_id": "default",   # or any unique string
+                    "thread_id": self.thread_id,
                 }
             }
 

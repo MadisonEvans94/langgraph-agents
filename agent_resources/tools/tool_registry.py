@@ -7,6 +7,7 @@ from langchain_chroma import Chroma  # Import Chroma for vector store
 from constants import COLLECTION_NAME, EMBEDDING_MODEL
 from dotenv import load_dotenv
 load_dotenv()
+
 # TODO: Place embeddings and vector store in a separate config file
 embeddings = OpenAIEmbeddings(model=EMBEDDING_MODEL)
 
@@ -14,7 +15,7 @@ embeddings = OpenAIEmbeddings(model=EMBEDDING_MODEL)
 chroma_vector_store = Chroma(
     embedding_function=embeddings,
     collection_name=COLLECTION_NAME,
-    persist_directory="./chroma_db"  # Ensure this matches the directory used in your ingestion script
+    persist_directory="./chroma_db"  
 )
 
 class ToolRegistry:

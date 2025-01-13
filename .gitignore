@@ -2,3 +2,5 @@ venv/
 .env
 notes/
 volumes/
+chroma_db/
+ingestion/
