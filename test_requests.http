@@ -1,0 +1,25 @@
+# Health Check Endpoint
+GET http://localhost:4881/health
+Content-Type: application/json
+
+###
+
+# Ask Endpoint
+POST http://localhost:4881/ask
+Content-Type: application/json
+
+{
+  "agent_type": "conversational_agent",
+  "user_query": "Hello, how are you?"
+}
+
+
+
+curl -X POST http://localhost:8001/ask \
+-H "Content-Type: application/json" \
+-d '{
+  "agent_type": "conversational_agent",
+  "user_query": "what did I just ask?"
+}'
+
+curl http://localhost:8001/health
