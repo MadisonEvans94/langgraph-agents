@@ -19,7 +19,7 @@ curl -X POST http://localhost:8001/ask \
 -H "Content-Type: application/json" \
 -d '{
   "agent_type": "conversational_agent",
-  "user_query": "what did I just ask?"
+  "user_query": "what did I ask?"
 }'
 
 curl http://localhost:8001/health
