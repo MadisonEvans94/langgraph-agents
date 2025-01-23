@@ -1,11 +1,10 @@
-import os
 import logging
 import time
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from dotenv import load_dotenv
 
-# LangChain-style message classes
+# LangChain-style message classes & utilities
 from langchain_core.messages import (
     BaseMessage,
     HumanMessage,
@@ -13,43 +12,35 @@ from langchain_core.messages import (
 )
 from langchain_core.messages.utils import convert_to_openai_messages
 
-# AgentFactory is presumably your own code that knows how to build/return the agent
+# Your custom factories / libraries
 from agent_resources.agent_factory import AgentFactory
 from langgraph.checkpoint.memory import MemorySaver
 
 # vLLM / OpenAI-compatible library
-from openai import OpenAI  
+from openai import OpenAI
+
+# Import constants from constants.py
+from agent_service.app.constants import (
+    API_BASE_URL,
+    API_KEY,
+    LLM_ID,
+    MAX_NEW_TOKENS,
+    TOP_P,
+    TEMPERATURE,
+    REPETITION_PENALTY,
+)
 
 # Setup logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-# Load environment variables from .env
-load_dotenv()
-
-# Check environment configs
-downstream_server = os.getenv("VLLM_DOWNSTREAM_HOST")
-if not downstream_server:
-    raise ValueError("VLLM_DOWNSTREAM_HOST environment variable is not set.")
-
-openai_api_base = f"{downstream_server}/v1"
-api_key = os.getenv("OPENAI_API_KEY")
-
-# Model & hyperparams
-llm_id = os.getenv("LLM_ID", "meta-llama/Llama-3.1-8B-Instruct") 
-max_new_tokens = int(os.getenv("MAX_NEW_TOKENS", 512))
-top_p = float(os.getenv("TOP_P", 1.0))
-temperature = float(os.getenv("TEMPERATURE", 1.0))
-repetition_penalty = float(os.getenv("REPETITION_PENALTY", 1.0))
-
-client_params = {"api_key": api_key}
-client_params["base_url"] = openai_api_base
+# Configure the OpenAI client
+client_params = {"api_key": API_KEY, "base_url": API_BASE_URL}
 client = OpenAI(**client_params)
-
 
 class ChatVLLMWrapper:
     """
-    Wraps a chat completion endpoint using OpenAI/vLLM. 
+    Wraps a chat completion endpoint using OpenAI/vLLM.
     Accepts a list of BaseMessage objects and returns an AIMessage.
     """
 
@@ -71,11 +62,10 @@ class ChatVLLMWrapper:
 
     def invoke(self, messages: list[BaseMessage]) -> AIMessage:
         """
-        Accepts a list of messages. Calls chat completion endpoint. 
+        Accepts a list of messages. Calls chat completion endpoint.
         Returns an AIMessage containing the new assistant message.
         """
         try:
-            # Convert LangChain messages to OpenAI format using LangChain utility
             openai_messages = convert_to_openai_messages(messages)
             params = {
                 "model": self.model,
@@ -85,7 +75,8 @@ class ChatVLLMWrapper:
                 "top_p": self.top_p,
             }
 
-            if not api_key:
+            # Example logic to conditionally include repetition_penalty
+            if not API_KEY:
                 params["repetition_penalty"] = self.repetition_penalty
 
             response = self.client.chat.completions.create(**params)
@@ -101,11 +92,11 @@ class ChatVLLMWrapper:
 # Create the wrapper
 llm = ChatVLLMWrapper(
     client=client,
-    model=llm_id,
-    max_new_tokens=max_new_tokens,
-    temperature=temperature,
-    top_p=top_p,
-    repetition_penalty=repetition_penalty,
+    model=LLM_ID,
+    max_new_tokens=MAX_NEW_TOKENS,
+    temperature=TEMPERATURE,
+    top_p=TOP_P,
+    repetition_penalty=REPETITION_PENALTY,
 )
 
 # Setup FastAPI
@@ -122,12 +113,15 @@ shared_memory = MemorySaver()
 agent_factory = AgentFactory(llm=llm, memory=shared_memory)
 agent = agent_factory.factory("conversational_agent")
 
+
 class QueryRequest(BaseModel):
     agent_type: str
     user_query: str
 
+
 class QueryResponse(BaseModel):
     response: str
+
 
 @app.post("/ask", response_model=QueryResponse)
 async def ask_question(request: QueryRequest):
@@ -138,7 +132,7 @@ async def ask_question(request: QueryRequest):
     human_message = HumanMessage(content=user_query)
 
     try:
-        # agent.run(...) eventually calls llm.invoke(...) with the entire conversation
+        # agent.run(...) eventually calls llm.invoke(...)
         ai_message = agent.run(human_message)
         response_time = time.perf_counter() - start_time
 
@@ -149,9 +143,11 @@ async def ask_question(request: QueryRequest):
         logger.error("Error generating response", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error processing the query: {e}")
 
+
 @app.get("/health")
 def health_check():
     return {"status": "ok", "message": "API is running."}
+
 
 if __name__ == "__main__":
     import uvicorn

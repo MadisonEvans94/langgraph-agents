@@ -1,5 +1,19 @@
 #!/bin/bash
 
+# Source the .env file
+if [[ -f ".env" ]]; then
+  export $(grep -v '^#' .env | xargs -d '\n')
+else
+  echo "ERROR: .env file not found!"
+  exit 1
+fi
+
+# LANGSMITH TRACING
+export LANGSMITH_TRACING=${LANGSMITH_TRACING:-"false"}
+export LANGSMITH_ENDPOINT=${LANGSMITH_ENDPOINT:-""}
+export LANGSMITH_API_KEY=${LANGSMITH_API_KEY:-""}
+export LANGSMITH_PROJECT=${LANGSMITH_PROJECT:-""}
+
 # LLM QnA Service
 export HOME_ROOT=${HOME_ROOT:-"/app"}
 export LOCAL_SERVICE_NAME="agent_service"
