@@ -1,6 +1,8 @@
 from typing import Dict, Type
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
+
+from .agents.conversational_agent_with_routing.conversational_agent_with_routing import ConversationalAgentWithRouting
 from .agents.react_agent.react_agent import ReactAgent
 from .agents.conversational_agent.conversational_agent import ConversationalAgent
 from .base_agent import Agent
@@ -25,6 +27,7 @@ class AgentFactory:
         self.agent_registry: Dict[str, Type[Agent]] = {
             'react_agent': ReactAgent,
             'conversational_agent': ConversationalAgent,
+            'conversational_agent_with_routing': ConversationalAgentWithRouting
         }
 
     def factory(self, agent_type: str, **kwargs) -> Agent:
