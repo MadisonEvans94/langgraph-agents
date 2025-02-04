@@ -13,8 +13,8 @@ from langgraph.graph import MessagesState
 logger = logging.getLogger(__name__)
 
 class ConversationalAgent(Agent):
-    def __init__(self, llm=None, memory=None, thread_id=None):
-        self.llm = llm
+    def __init__(self, llm_list=[], memory=None, thread_id=None):
+        self.llm_list = llm_list
         self.memory = memory if memory else MemorySaver()
         self.thread_id = thread_id if thread_id else 'default'
         self.build_graph()
@@ -24,7 +24,7 @@ class ConversationalAgent(Agent):
 
         # add nodes 
         state_graph.add_node("start_node", lambda state: state)
-        state_graph.add_node("llm_node", partial(llm_node, llm=self.llm))
+        state_graph.add_node("llm_node", partial(llm_node, llm=self.llm_list[0])) #TODO: FIX THIS
         state_graph.add_node("end_node", lambda state: state)
         state_graph.set_entry_point("start_node")
 

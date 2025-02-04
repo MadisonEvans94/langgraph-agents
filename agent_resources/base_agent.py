@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 from langchain.schema import AIMessage
 from IPython.display import display, Image
 from langchain_core.runnables.graph import MermaidDrawMethod
+from typing import Dict, List
+from langchain_core.language_models.chat_models import BaseChatModel
 
 class Agent(ABC):
     """
@@ -26,7 +28,8 @@ class Agent(ABC):
             with open(save_path, "wb") as f:
                 f.write(graph_image)
             print(f"Workflow visualization saved at: {save_path}")
-    
+
+
     @abstractmethod
     def build_graph(self):
         """

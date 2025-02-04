@@ -14,9 +14,9 @@ load_dotenv(override=True)
 logger = logging.getLogger(__name__)
 
 class ConversationalAgentWithRouting(Agent):
-    def __init__(self, llm=None, memory=None, thread_id=None):
+    def __init__(self, llm_list = [], memory=None, thread_id=None):
         # TODO: Hardcoding LLM instances for now. Will refactor and make more dynamic in future 
-        self.llm = llm  
+        self.llm_list= llm_list
         self.alternate_llm = ChatOpenAI(
             model="gpt-3.5-turbo",
             temperature=0,
@@ -29,7 +29,7 @@ class ConversationalAgentWithRouting(Agent):
         state_graph = StateGraph(MessagesState)
 
         # Add nodes:
-        state_graph.add_node("strong_llm_node", partial(llm_node, llm=self.llm))
+        state_graph.add_node("strong_llm_node", partial(llm_node, llm=self.llm_list[0])) #TODO: FIX THIS
         state_graph.add_node("regular_llm_node", partial(llm_node, llm=self.alternate_llm))
 
         # Define edges:
