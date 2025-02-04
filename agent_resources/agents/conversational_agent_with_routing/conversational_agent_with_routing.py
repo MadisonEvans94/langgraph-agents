@@ -1,6 +1,6 @@
 import logging
 from functools import partial
-
+from dotenv import load_dotenv
 from langchain_core.messages import BaseMessage, AIMessage
 from langgraph.graph import StateGraph, END, START
 from langgraph.checkpoint.memory import MemorySaver
@@ -8,6 +8,8 @@ from agent_resources.base_agent import Agent
 from .nodes import route_query, llm_node
 from langchain_openai import ChatOpenAI
 from langgraph.graph import MessagesState
+
+load_dotenv(override=True)
 
 logger = logging.getLogger(__name__)
 

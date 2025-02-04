@@ -1,7 +1,7 @@
 from typing import Dict, Type
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
-
+from langchain_core.language_models.chat_models import BaseChatModel
 from .agents.conversational_agent_with_routing.conversational_agent_with_routing import ConversationalAgentWithRouting
 from .agents.react_agent.react_agent import ReactAgent
 from .agents.conversational_agent.conversational_agent import ConversationalAgent
@@ -13,7 +13,7 @@ class AgentFactory:
     Factory class for creating agents with shared configurations.
     """
 
-    def __init__(self, llm: ChatOpenAI, memory: MemorySaver):
+    def __init__(self, llm: BaseChatModel, memory: MemorySaver):
         """
         Initialize the factory with shared dependencies.
 
