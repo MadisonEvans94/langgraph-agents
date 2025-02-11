@@ -1,0 +1,9 @@
+llm_configs:
+  default_llm:
+    api_key: null # Will be overridden by .env
+    base_url: null # Will be overridden by .env
+    model_id: "meta-llama/Llama-3.1-8B-Instruct"
+    max_new_tokens: 512
+    temperature: 1.0
+    top_p: 1.0
+    repetition_penalty: 1.0

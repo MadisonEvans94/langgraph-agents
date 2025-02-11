@@ -10,10 +10,13 @@ Content-Type: application/json
 
 {
   "agent_type": "conversational_agent",
-  "user_query": "What did I just ask?"
+  "user_query": "Hello. my favorite color is blue"
 }
-
 
 # curl -X POST http://localhost:8001/ask -H "Content-Type: application/json" -d '{"agent_type": "conversational_agent", "user_query": "I'm glad to hear that. Tell me a joke?"}'
 
 # curl http://localhost:8001/health
+
+# kubectl port-forward pod/agent-server-6d686df49c-5pdcj 8001:8001
+ 
+ 
