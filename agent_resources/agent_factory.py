@@ -1,7 +1,5 @@
 from typing import Dict, Type
 from langgraph.checkpoint.memory import MemorySaver
-
-from .agents.demo_agent.demo_agent import DemoAgent
 from .agents.conversational_agent_with_routing.conversational_agent_with_routing import ConversationalAgentWithRouting
 from agent_resources.base_agent import Agent
 from .agents.conversational_agent.conversational_agent import ConversationalAgent
@@ -19,7 +17,6 @@ class AgentFactory:
         self.agent_registry: Dict[str, Type[Agent]] = {
             'conversational_agent': ConversationalAgent,
             'conversational_agent_with_routing': ConversationalAgentWithRouting, 
-            'demo_agent': DemoAgent
         }
     
     def factory(self, agent_type: str, **kwargs) -> Agent:

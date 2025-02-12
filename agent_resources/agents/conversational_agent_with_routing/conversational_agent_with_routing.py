@@ -81,15 +81,20 @@ class ConversationalAgentWithRouting(Agent):
 
     def build_graph(self):
         state_graph = StateGraph(MessagesState)
-        state_graph.add_node("route_query_node", partial(route_query, llm_dict=self.llm_dict))
+        
+        state_graph.add_node("route_query_node", lambda state: state)
         state_graph.add_edge(START, "route_query_node")
-
-        # This for loop acts as a fan-out within graph, adding LLMs from llm_dict as next nodes from conditional branch
+        
+        state_graph.add_conditional_edges(
+            "route_query_node",
+            lambda state: route_query(state, self.llm_dict)
+        )
+        
+        # Add each LLM node and connect it to the END.
         for name, llm in self.llm_dict.items():
             state_graph.add_node(name, partial(llm_node, llm=llm))
-            state_graph.add_edge("route_query_node", name)
             state_graph.add_edge(name, END)
-
+        
         self.state_graph = state_graph.compile(checkpointer=self.memory)
 
 

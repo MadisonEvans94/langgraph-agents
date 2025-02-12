@@ -20,12 +20,13 @@ def load_llm_configs(config_path: str = None):
         with open(config_path, "r") as file:
             yaml_config = yaml.safe_load(file) or {}
             llm_configs = yaml_config.get("llm_configs", {}).get("default_llm", {})
+            print(llm_configs)
 
             merged_config = {
                 "api_key": os.getenv("OPENAI_API_KEY", llm_configs.get("api_key")),
-                "base_url": os.getenv("VLLM_DOWNSTREAM_HOST", llm_configs.get("base_url")),
-                "model_id": os.getenv("LLM_ID", llm_configs.get("model_id")),
-                "max_new_tokens": int(os.getenv("MAX_NEW_TOKENS", llm_configs.get("max_new_tokens", 512))),
+                "base_url": llm_configs.get("base_url"),
+                "model_id": llm_configs.get("model_id"), 
+                "max_new_tokens": llm_configs.get("max_new_tokens", 512), 
                 "temperature": float(os.getenv("TEMPERATURE", llm_configs.get("temperature", 1.0))),
                 "top_p": float(os.getenv("TOP_P", llm_configs.get("top_p", 1.0))),
                 "repetition_penalty": float(os.getenv("REPETITION_PENALTY", llm_configs.get("repetition_penalty", 1.0))),
