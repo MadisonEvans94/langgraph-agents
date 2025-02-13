@@ -1,0 +1,84 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: vllm-downstream-2
+  namespace: ogpt
+spec:
+  type: NodePort
+  selector:
+    app: vllm-downstream-server-2
+  ports:
+  - protocol: TCP
+    port: 4882
+    targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-downstream-server-2
+  namespace: ogpt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: vllm-downstream-server-2
+  template:
+    metadata:
+      labels:
+        app: vllm-downstream-server-2
+    spec:
+      containers:
+      - name: vllm-downstream-server-2
+        image: sapdai/refd:llmapi_vllm_server_ubuntu_22.04_synapse_1.18.0_pytorch_2.4.0_main
+        imagePullPolicy: Always
+        env:
+        - name: LOCAL_NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: LOCAL_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: LOCAL_POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: LOCAL_POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: HABANA_VISIBLE_DEVICES
+          value: "all"
+        - name: OMPI_MCA_btl_vader_single_copy_mechanism
+          value: "none"
+        - name: PT_HPU_ENABLE_LAZY_COLLECTIVES
+          value: "true"
+        - name: PT_HPU_LAZY_ACC_PAR_MODE
+          value: "0"
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: hf-token-all
+              key: HF_TOKEN
+        resources:
+          requests:
+            habana.ai/gaudi: 1
+            cpu: 8
+            memory: 50Gi
+            hugepages-2Mi: 8000Mi
+          limits:
+            habana.ai/gaudi: 1
+            memory: 55Gi
+            hugepages-2Mi: 8000Mi
+        command: [ "bash", "-c" ]
+        args:
+        - 'python -m vllm.entrypoints.openai.api_server --model=meta-llama/Llama-3.1-8B-Instruct --port 8000 --device hpu --tensor-parallel-size 1 --pipeline-parallel-size 1 --dtype bfloat16 --max-num-seqs 128 --block-size 128'
+        ports:
+        - containerPort: 8000
+      imagePullSecrets:
+      - name: dockerhub
+      nodeSelector:
+        nodetype: gaudi2-118
+      terminationGracePeriodSeconds: 5

@@ -38,6 +38,7 @@ class ConversationalAgent(Agent):
             )
             for name, config in llm_configs.items()
         }
+        logger.info(f"self.llm_dict: {self.llm_dict}")
         return self.llm_dict
 
 
