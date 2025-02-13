@@ -35,7 +35,6 @@ async def ask_question(request: QueryRequest):
     human_message = HumanMessage(content=user_query)
 
     try:
-        # agent.run(...) eventually calls llm.invoke(...)
         ai_message = agent.run(human_message)
         response_time = time.perf_counter() - start_time
 
