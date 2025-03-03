@@ -4,20 +4,24 @@ from langgraph.graph import MessagesState
 import requests
 
 def default_llm_node(state: MessagesState, default_llm):
-    """
-    Calls the default LLM with the current messages.
-    Because we bound the tools to default_llm, the model can produce tool_calls if desired.
-    """
     messages = state.get("messages", [])
     response = default_llm.invoke(messages)
+
+    model_name = getattr(default_llm, "model_name", getattr(default_llm, "model", "unknown"))
+
     return {
         "messages": [
             AIMessage(
                 content=response.content,
-                tool_calls=getattr(response, "tool_calls", [])
+                # preserve any tool calls
+                tool_calls=getattr(response, "tool_calls", []),
+                # store the model name used
+                additional_kwargs={"model_used": model_name}
             )
         ]
     }
+
+
 
 def routing_node(state: MessagesState) -> str:
     """
@@ -98,16 +102,17 @@ def react_logic_node(state: MessagesState, llm, tools, system_prompt, max_iterat
     return state
 
 def alternate_llm_node(state: MessagesState, alternate_llm):
-    """
-    Calls the alternate LLM (e.g. GPT-4) with the updated messages.
-    """
     messages = state.get("messages", [])
     response = alternate_llm.invoke(messages)
+
+    model_name = getattr(alternate_llm, "model_name", getattr(alternate_llm, "model", "unknown"))
+
     return {
         "messages": [
             AIMessage(
                 content=response.content,
-                tool_calls=getattr(response, "tool_calls", [])
+                tool_calls=getattr(response, "tool_calls", []),
+                additional_kwargs={"model_used": model_name}
             )
         ]
     }

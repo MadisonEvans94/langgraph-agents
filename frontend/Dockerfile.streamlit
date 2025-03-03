@@ -16,7 +16,8 @@ EXPOSE 8501
 # Set environment variable to disable usage stats prompt
 ENV STREAMLIT_BROWSER_GATHER_USAGE_STATS false
 
-ENV AGENT_SERVICE_URL="http://agent-service:8001/ask"
+# ENV AGENT_SERVICE_URL="http://agent-service:8001/ask"
+ENV AGENT_SERVICE_URL="http://localhost:8001/ask"
 
 # Command to run the Streamlit app
 CMD ["streamlit", "run", "streamlit_app.py", "--server.port=8501", "--server.address=0.0.0.0"]

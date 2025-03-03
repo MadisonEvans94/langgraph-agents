@@ -3,7 +3,6 @@ from functools import partial
 from dotenv import load_dotenv
 from openai import OpenAI
 from typing import Dict
-from langchain_openai import ChatOpenAI
 from agent_resources.prompts import REACT_AGENT_SYSTEM_PROMPT
 from agent_resources.utils import ChatVLLMWrapper  # <-- your custom wrapper
 from langchain_core.messages import BaseMessage, AIMessage, HumanMessage
@@ -14,9 +13,7 @@ from agent_resources.tools.tool_registry import ToolRegistry
 
 from .nodes import (
     default_llm_node,
-    routing_node,  # used only as conditional function
-    check_tool_calls,
-    react_logic_node,
+    routing_node,  
     alternate_llm_node
 )
 from langgraph.graph import MessagesState
@@ -36,17 +33,30 @@ class ConversationalAgentWithRouting(Agent):
         :param llm_configs: Dictionary describing how to build each LLM.
                             Example:
                             {
-                                "strong_llm": { ... },
-                                "weak_llm": { ... }
+                              "default_llm": {
+                                "api_key": "...",
+                                "base_url": "http://vllm-downstream:4882/v1",
+                                "model_id": "gpt-3.5-turbo",
+                                "max_new_tokens": 512,
+                                "temperature": 1.0,
+                                "top_p": 1.0,
+                                "repetition_penalty": 1.0
+                              },
+                              "alternate_llm": {
+                                "api_key": "...",
+                                "base_url": "http://vllm-downstream-2:4882/v1",
+                                "model_id": "gpt-4",
+                                "max_new_tokens": 512,
+                                "temperature": 1.0,
+                                "top_p": 1.0,
+                                "repetition_penalty": 1.0
+                              }
                             }
         :param memory: Checkpoint memory (optional).
         :param thread_id: Unique identifier for sessions (optional).
         """
         self.memory = memory if memory else MemorySaver()
         self.thread_id = thread_id if thread_id else "default"
-
-        # Retrieve the tools you want to use (e.g. 'tavily_search')
-        self.tools = ToolRegistry.get_tools(["tavily_search"])
 
         # Build the dictionary of LLMs (including default_llm and alternate_llm)
         self.build_llm_dict(llm_configs)
@@ -56,47 +66,65 @@ class ConversationalAgentWithRouting(Agent):
 
     def build_llm_dict(self, llm_configs: Dict) -> Dict[str, object]:
         """
-        Optionally use ChatVLLMWrapper to call your custom vLLM endpoint.
+        Uses ChatVLLMWrapper to call your custom vLLM endpoint.
+        The llm_configs should include keys like "model_id", "base_url", etc.
         """
         if llm_configs is None:
             llm_configs = {}
 
         self.llm_dict = {}
 
-        # Build an LLM for each config key
+        # Build an LLM for each config key provided.
         for name, config in llm_configs.items():
             config = config or {}
             model_id = config.get("model_id", "gpt-3.5-turbo")
             temperature = config.get("temperature", 0.7)
             openai_api_key = config.get("api_key", "")
-            llm = ChatOpenAI(
+            base_url = config.get("base_url", None)
+            if base_url is None:
+                # Fallback default endpoint; adjust if needed.
+                base_url = "http://vllm-downstream:4882/v1"
+
+            # Create a client that points to your vLLM endpoint.
+            client = OpenAI(api_key=openai_api_key, base_url=base_url)
+            
+            llm = ChatVLLMWrapper(
+                client=client,
                 model=model_id,
+                max_new_tokens=config.get("max_new_tokens", 512),
                 temperature=temperature,
-                openai_api_key=openai_api_key,
+                top_p=config.get("top_p", 1.0),
+                repetition_penalty=config.get("repetition_penalty", 1.0),
             )
             self.llm_dict[name] = llm
 
-        # Ensure default_llm
+        # Ensure default_llm is available.
         if "default_llm" not in self.llm_dict:
-            default_llm = ChatOpenAI(
+            default_base_url = "http://vllm-downstream:4882/v1"
+            default_client = OpenAI(api_key="", base_url=default_base_url)
+            default_llm = ChatVLLMWrapper(
+                client=default_client,
                 model="gpt-3.5-turbo",
+                max_new_tokens=512,
                 temperature=0.7,
-                openai_api_key=""
+                top_p=1.0,
+                repetition_penalty=1.0,
             )
             self.llm_dict["default_llm"] = default_llm
 
-        # Ensure alternate_llm
+        # Ensure alternate_llm is available.
         if "alternate_llm" not in self.llm_dict:
-            alt_llm = ChatOpenAI(
+            alternate_base_url = "http://vllm-downstream-2:4882/v1"
+            alternate_client = OpenAI(api_key="", base_url=alternate_base_url)
+            alt_llm = ChatVLLMWrapper(
+                client=alternate_client,
                 model="gpt-4",
+                max_new_tokens=512,
                 temperature=0.7,
-                openai_api_key=""
+                top_p=1.0,
+                repetition_penalty=1.0,
             )
             self.llm_dict["alternate_llm"] = alt_llm
-
-        # Bind tools to default_llm if available.
-        if self.tools:
-            self.llm_dict["default_llm"] = self.llm_dict["default_llm"].bind_tools(self.tools)
 
         return self.llm_dict
 
@@ -104,11 +132,7 @@ class ConversationalAgentWithRouting(Agent):
         """
         Build a ReAct system prompt that lists available tools.
         """
-        lines = []
-        for i, tool in enumerate(self.tools, start=1):
-            lines.append(f"{i}. {tool.name}: {tool.description}")
-        tools_section = "\n".join(lines)
-        return REACT_AGENT_SYSTEM_PROMPT.format(tools_section=tools_section)
+        return REACT_AGENT_SYSTEM_PROMPT.format(tools_section="")
 
     def build_graph(self):
         """
@@ -125,7 +149,7 @@ class ConversationalAgentWithRouting(Agent):
         # Add conditional edges using routing_node to determine the next node.
         state_graph.add_conditional_edges(
             "routing_pass",
-            routing_node,  # this function returns a string mapping to the next node
+            routing_node,  
             path_map={
                 "alternate_llm_node": "alternate_llm_node",
                 "default_llm_node": "default_llm_node",
@@ -156,7 +180,7 @@ class ConversationalAgentWithRouting(Agent):
                 }
             }
 
-            # Invoke the state graph with the new user message.
+            # Invoke the state graph.
             response = self.state_graph.invoke({"messages": [message]}, config=config)
             all_msgs = response["messages"]
 
@@ -170,15 +194,19 @@ class ConversationalAgentWithRouting(Agent):
             if idx is None:
                 return AIMessage(content="No matching user message found.")
 
-            # Everything after idx is generated for this turn.
+            # Everything after idx is newly generated for this turn.
             new_msgs = all_msgs[idx+1:]
             used_tools = {m.name for m in new_msgs if getattr(m, "role", "") == "tool"}
-            model_used = "gpt-4" if used_tools else "gpt-3.5-turbo"
+
+            # The final AI message is typically the last one.
             final_ai_msg = new_msgs[-1] if new_msgs else AIMessage(content="No AI response.")
 
-            # Attach metadata.
+            # Extract model_used from the final AI message (set in nodes.py).
+            node_model_used = getattr(final_ai_msg, "additional_kwargs", {}).get("model_used", "unknown")
+
+            # Store the info in final_ai_msg.
             final_ai_msg.additional_kwargs["tools_used"] = list(used_tools)
-            final_ai_msg.additional_kwargs["model_used"] = model_used
+            final_ai_msg.additional_kwargs["model_used"] = node_model_used
 
             return final_ai_msg
 

@@ -2,8 +2,8 @@ llm_configs:
   default_llm:
     api_key: null # Will be overridden by .env
     base_url: "http://vllm-downstream:4882/v1"
-    # model_id: "meta-llama/Llama-3.1-8B-Instruct"
-    model_id: "gpt-3.5-turbo"
+    model_id: "meta-llama/Llama-3.1-8B-Instruct"
+    # model_id: "gpt-3.5-turbo"
     max_new_tokens: 512
     temperature: 1.0
     top_p: 1.0
@@ -11,8 +11,8 @@ llm_configs:
   alternate_llm:
     api_key: null # Will be overridden by .env
     base_url: "http://vllm-downstream-2:4882/v1"
-    # model_id: "meta-llama/Llama-3.1-8B-Instruct"
-    model_id: "gpt-4"
+    model_id: "meta-llama/Llama-3.1-8B-Instruct"
+    # model_id: "gpt-4"
     max_new_tokens: 512
     temperature: 1.0
     top_p: 1.0
