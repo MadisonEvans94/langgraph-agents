@@ -1,25 +1,113 @@
-from langchain_core.messages import AIMessage
+import json
+from langchain_core.messages import AIMessage, ToolMessage, SystemMessage
 from langgraph.graph import MessagesState
+import requests
 
-def route_query(state: MessagesState, llm_dict: dict) -> str:
-
-    messages = state.get('messages', [])
-    query = messages[-1].content.lower() if messages else ""
-
-    # TODO: Decision logic should go here. Currently just dummy code that routes to 'llm_name' if 'llm_name' exists in query 
-    for llm_name in llm_dict.keys():
-        if llm_name in query:
-            print(llm_name)
-            return llm_name
-
-
-
-    return "default_llm"
-
-def llm_node(state: MessagesState, llm) -> dict:
+def default_llm_node(state: MessagesState, default_llm):
     """
-    Calls the provided LLM with the current messages and returns the AIMessage response.
+    Calls the default LLM with the current messages.
+    Because we bound the tools to default_llm, the model can produce tool_calls if desired.
     """
-    messages = state.get('messages', [])
-    answer = llm.invoke(messages)
-    return {"messages": [AIMessage(content=answer.content)]}
+    messages = state.get("messages", [])
+    response = default_llm.invoke(messages)
+    return {
+        "messages": [
+            AIMessage(
+                content=response.content,
+                tool_calls=getattr(response, "tool_calls", [])
+            )
+        ]
+    }
+
+def routing_node(state: MessagesState) -> str:
+    """
+    Determines the next node by analyzing the user query.
+    Returns a string that maps to the name of the next node.
+    """
+    messages = state.get("messages", [])
+    query = messages[-1].content if messages else "default query"
+    return "alternate_llm_node" if "research" in query.lower() else "default_llm_node"
+
+def check_tool_calls(state: MessagesState) -> str:
+    """
+    Checks the last AIMessage in state.
+    If it includes any tool_calls, returns 'react_logic_node';
+    otherwise returns '__end__' (indicating no tool usage).
+    """
+    messages = state.get("messages", [])
+    if not messages:
+        return "__end__"
+    last_msg = messages[-1]
+    if isinstance(last_msg, AIMessage) and getattr(last_msg, "tool_calls", []):
+        return "react_logic_node"
+    return "__end__"
+
+def react_logic_node(state: MessagesState, llm, tools, system_prompt, max_iterations: int = 3) -> dict:
+    """
+    Implements a ReAct-like iterative loop:
+      1. Insert a SystemMessage with the system_prompt if none is present.
+      2. Process any tool_calls found in the last AIMessage.
+      3. Re-invoke the LLM with updated messages.
+    """
+    messages = state.setdefault("messages", [])
+    if not messages or not isinstance(messages[0], SystemMessage):
+        system_msg = SystemMessage(content=system_prompt)
+        messages.insert(0, system_msg)
+
+    iterations = 0
+    while iterations < max_iterations:
+        if not messages:
+            break
+
+        last_msg = messages[-1]
+        tool_calls = getattr(last_msg, "tool_calls", [])
+        if not tool_calls:
+            break
+
+        for call in tool_calls:
+            tool_name = call.get("name")
+            args = call.get("args", "")
+            tool = next((t for t in tools if getattr(t, "name", None) == tool_name), None)
+            if not tool:
+                continue
+
+            tool_result = tool.invoke(args)
+            if not isinstance(tool_result, str):
+                try:
+                    tool_result_str = json.dumps(tool_result, ensure_ascii=False)
+                except TypeError:
+                    tool_result_str = str(tool_result)
+            else:
+                tool_result_str = tool_result
+
+            tool_msg = ToolMessage(
+                name=tool_name,
+                content=tool_result_str,
+                tool_call_id=call["id"]
+            )
+            messages.append(tool_msg)
+
+        new_response = llm.invoke(messages)
+        new_ai_msg = AIMessage(
+            content=new_response.content,
+            tool_calls=getattr(new_response, "tool_calls", [])
+        )
+        messages.append(new_ai_msg)
+        iterations += 1
+
+    return state
+
+def alternate_llm_node(state: MessagesState, alternate_llm):
+    """
+    Calls the alternate LLM (e.g. GPT-4) with the updated messages.
+    """
+    messages = state.get("messages", [])
+    response = alternate_llm.invoke(messages)
+    return {
+        "messages": [
+            AIMessage(
+                content=response.content,
+                tool_calls=getattr(response, "tool_calls", [])
+            )
+        ]
+    }

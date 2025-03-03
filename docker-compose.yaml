@@ -1,0 +1,20 @@
+services:
+  agent-service:
+    build:
+      context: .
+      dockerfile: Dockerfile       # points to your root Dockerfile
+    container_name: agent-service
+    ports:
+      - "8001:8001"               # exposes agent on localhost:8001
+
+  streamlit:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.streamlit
+    container_name: streamlit
+    ports:
+      - "8501:8501"               # exposes Streamlit on localhost:8501
+    depends_on:
+      - agent-service             # ensures agent starts first
+    environment:
+      - AGENT_SERVICE_URL=http://agent-service:8001/ask

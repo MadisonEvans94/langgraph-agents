@@ -29,7 +29,7 @@ spec:
     spec:
       containers:
       - name: agent-server
-        image: sapdai/refd:agent-service-v2
+        image: sapdai/refd:agent-service-v3
         imagePullPolicy: Always
         env:
         - name: LOCAL_NODE_NAME

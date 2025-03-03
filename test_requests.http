@@ -9,14 +9,18 @@ POST http://localhost:8001/ask
 Content-Type: application/json
 
 {
-  "agent_type": "conversational_agent",
-  "user_query": "I'm using llm2?"
+  "agent_type": "conversational_agent_with_routing",
+  "user_query": "what's the weather like today in Austin?"
 }
 
 # curl -X POST http://localhost:8001/ask -H "Content-Type: application/json" -d '{"agent_type": "conversational_agent", "user_query": "I'm glad to hear that. Tell me a joke?"}'
 
 # curl http://localhost:8001/health
 
-# kubectl port-forward pod/agent-server-6d686df49c-9xb9x 8001:8001
+# kubectl port-forward pod/agent-server-66cdf6c7c4-r5qgv 8001:8001
  
- 
+# docker run -p 8501:8501 sapdai/refd:agent-service-frontend
+
+# docker network create my-network
+
+# docker run -p 8001:8001 --network my-network sapdai/refd:agent-service-v3

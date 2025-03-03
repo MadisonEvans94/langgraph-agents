@@ -4,12 +4,12 @@ from langchain_community.tools.tavily_search import TavilySearchResults
 # from .retrieve_documents import RetrieveDocuments  
 from langchain_openai import OpenAIEmbeddings
 # from langchain_chroma import Chroma  # Import Chroma for vector store
-from constants import COLLECTION_NAME, EMBEDDING_MODEL
+# from constants import COLLECTION_NAME, EMBEDDING_MODEL
 from dotenv import load_dotenv
 load_dotenv()
 
 # TODO: Place embeddings and vector store in a separate config file
-embeddings = OpenAIEmbeddings(model=EMBEDDING_MODEL)
+embeddings = OpenAIEmbeddings()
 
 # Initialize Chroma vector store
 # chroma_vector_store = Chroma(
