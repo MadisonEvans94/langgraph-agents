@@ -1,0 +1,19 @@
+### 
+POST http://localhost:8000/classify
+Content-Type: application/json
+
+{
+  "query": "Hello, how are you?"
+}
+
+
+### 
+POST http://localhost:8000/classify
+Content-Type: application/json
+
+{
+  "query": "what is the average price of a new nvidia gpu and how does it compare to Intel's top of the line gpus? I'm asking because there's a lot going on with AI pretraining currently, and I'd like to find an option that scales optimally for my current use cases"
+}
+
+### Health Check
+GET http://localhost:8000/health

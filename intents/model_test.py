@@ -4,19 +4,19 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 
 # Load tokenizer
-with open("model_files/tokenizer.pkl", "rb") as handle:
+with open("model_files/rephrased_tokenizer.pkl", "rb") as handle:
     tokenizer = pickle.load(handle)
 
 # Load label encoder
-with open("model_files/label_encoder.pkl", "rb") as handle:
+with open("model_files/rephrased_label_encoder.pkl", "rb") as handle:
     label_encoder = pickle.load(handle)
 
 # Load class names
-with open("model_files/classes.pkl", "rb") as handle:
+with open("model_files/rephrased_classes.pkl", "rb") as handle:
     classes = pickle.load(handle)
 
 # Load trained model
-model = load_model("model_files/intents.h5")  # Ensure correct path
+model = load_model("model_files/rephrased_intents.h5")  # Ensure correct path
 
 def predict_intent(text):
     """Preprocesses input text, runs model prediction, and returns the predicted intent."""
