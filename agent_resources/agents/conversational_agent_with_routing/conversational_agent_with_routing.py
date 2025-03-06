@@ -4,12 +4,11 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from typing import Dict
 from agent_resources.prompts import REACT_AGENT_SYSTEM_PROMPT
-from agent_resources.utils import ChatVLLMWrapper  # <-- your custom wrapper
-from langchain_core.messages import BaseMessage, AIMessage, HumanMessage
-from langgraph.graph import StateGraph, END, START
+from agent_resources.utils import ChatVLLMWrapper 
+from langchain_core.messages import AIMessage, HumanMessage
+from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
 from agent_resources.base_agent import Agent
-from agent_resources.tools.tool_registry import ToolRegistry
 
 from .nodes import (
     default_llm_node,
@@ -35,8 +34,8 @@ class ConversationalAgentWithRouting(Agent):
                             {
                               "default_llm": {
                                 "api_key": "...",
-                                "base_url": "http://vllm-downstream:4882/v1",
-                                "model_id": "gpt-3.5-turbo",
+                                "base_url": "...",
+                                "model_id": "...",
                                 "max_new_tokens": 512,
                                 "temperature": 1.0,
                                 "top_p": 1.0,
@@ -44,8 +43,8 @@ class ConversationalAgentWithRouting(Agent):
                               },
                               "alternate_llm": {
                                 "api_key": "...",
-                                "base_url": "http://vllm-downstream-2:4882/v1",
-                                "model_id": "gpt-4",
+                                "base_url": "...",
+                                "model_id": "...",
                                 "max_new_tokens": 512,
                                 "temperature": 1.0,
                                 "top_p": 1.0,
@@ -68,22 +67,36 @@ class ConversationalAgentWithRouting(Agent):
         """
         Uses ChatVLLMWrapper to call your custom vLLM endpoint.
         The llm_configs should include keys like "model_id", "base_url", etc.
+        Expected configuration keys (e.g., in your config.yaml):
+        - default_llm
+        - alternate_llm
         """
         if llm_configs is None:
-            llm_configs = {}
+            raise ValueError("llm_configs cannot be None. Please provide a valid configuration dictionary.")
+
+        # Ensure required llm keys are present.
+        required_keys = ["default_llm", "alternate_llm"]
+        for key in required_keys:
+            if key not in llm_configs:
+                raise ValueError(f"Missing required LLM configuration: '{key}'. Please include it in your config.yaml.")
 
         self.llm_dict = {}
 
         # Build an LLM for each config key provided.
         for name, config in llm_configs.items():
-            config = config or {}
-            model_id = config.get("model_id", "gpt-3.5-turbo")
+            if not config:
+                raise ValueError(f"Configuration for '{name}' is empty. Please provide a valid configuration.")
+            
+            model_id = config.get("model_id")
+            if model_id is None:
+                raise ValueError(f"Configuration for '{name}' must include 'model_id'.")
+
+            base_url = config.get("base_url")
+            if base_url is None:
+                raise ValueError(f"Configuration for '{name}' must include 'base_url'.")
+
             temperature = config.get("temperature", 0.7)
             openai_api_key = config.get("api_key", "")
-            base_url = config.get("base_url", None)
-            if base_url is None:
-                # Fallback default endpoint; adjust if needed.
-                base_url = "http://vllm-downstream:4882/v1"
 
             # Create a client that points to your vLLM endpoint.
             client = OpenAI(api_key=openai_api_key, base_url=base_url)
@@ -97,34 +110,6 @@ class ConversationalAgentWithRouting(Agent):
                 repetition_penalty=config.get("repetition_penalty", 1.0),
             )
             self.llm_dict[name] = llm
-
-        # Ensure default_llm is available.
-        if "default_llm" not in self.llm_dict:
-            default_base_url = "http://vllm-downstream:4882/v1"
-            default_client = OpenAI(api_key="", base_url=default_base_url)
-            default_llm = ChatVLLMWrapper(
-                client=default_client,
-                model="gpt-3.5-turbo",
-                max_new_tokens=512,
-                temperature=0.7,
-                top_p=1.0,
-                repetition_penalty=1.0,
-            )
-            self.llm_dict["default_llm"] = default_llm
-
-        # Ensure alternate_llm is available.
-        if "alternate_llm" not in self.llm_dict:
-            alternate_base_url = "http://vllm-downstream-2:4882/v1"
-            alternate_client = OpenAI(api_key="", base_url=alternate_base_url)
-            alt_llm = ChatVLLMWrapper(
-                client=alternate_client,
-                model="gpt-4",
-                max_new_tokens=512,
-                temperature=0.7,
-                top_p=1.0,
-                repetition_penalty=1.0,
-            )
-            self.llm_dict["alternate_llm"] = alt_llm
 
         return self.llm_dict
 
@@ -169,7 +154,8 @@ class ConversationalAgentWithRouting(Agent):
 
     def run(self, message: HumanMessage):
         """
-        Processes a single user query (HumanMessage), returning the final AIMessage.
+        Processes a single user query (HumanMessage) by invoking the state graph,
+        then extracts metadata (tools used, model used) for the frontend.
         """
         try:
             config = {
@@ -182,34 +168,41 @@ class ConversationalAgentWithRouting(Agent):
 
             # Invoke the state graph.
             response = self.state_graph.invoke({"messages": [message]}, config=config)
-            all_msgs = response["messages"]
-
-            # Find the index of the incoming HumanMessage.
-            idx = None
-            for i, m in enumerate(all_msgs):
-                if m == message:
-                    idx = i
-                    break
-
-            if idx is None:
-                return AIMessage(content="No matching user message found.")
-
-            # Everything after idx is newly generated for this turn.
-            new_msgs = all_msgs[idx+1:]
-            used_tools = {m.name for m in new_msgs if getattr(m, "role", "") == "tool"}
-
-            # The final AI message is typically the last one.
-            final_ai_msg = new_msgs[-1] if new_msgs else AIMessage(content="No AI response.")
-
-            # Extract model_used from the final AI message (set in nodes.py).
-            node_model_used = getattr(final_ai_msg, "additional_kwargs", {}).get("model_used", "unknown")
-
-            # Store the info in final_ai_msg.
-            final_ai_msg.additional_kwargs["tools_used"] = list(used_tools)
-            final_ai_msg.additional_kwargs["model_used"] = node_model_used
-
-            return final_ai_msg
+            return self._extract_response_metadata(response, message)
 
         except Exception as e:
             logger.error("Error generating response", exc_info=True)
             return AIMessage(content=f"Sorry, I encountered an error: {e}")
+
+
+    def _extract_response_metadata(self, response: dict, input_message: HumanMessage) -> AIMessage:
+        """
+        Extracts the final AI message and relevant metadata (e.g., tools used, model used)
+        from the state graph response.
+
+        :param response: The dictionary returned from state_graph.invoke.
+        :param input_message: The original HumanMessage input.
+        :return: An AIMessage with the metadata attached.
+        """
+        all_msgs = response.get("messages", [])
+
+        # Locate the index of the incoming HumanMessage.
+        idx = next((i for i, m in enumerate(all_msgs) if m == input_message), None)
+        if idx is None:
+            return AIMessage(content="No matching user message found.")
+
+        # Get all newly generated messages after the user's input.
+        new_msgs = all_msgs[idx + 1:]
+        used_tools = {m.name for m in new_msgs if getattr(m, "role", "") == "tool"}
+
+        # The final AI message is typically the last one.
+        final_ai_msg = new_msgs[-1] if new_msgs else AIMessage(content="No AI response.")
+
+        # Extract the model used from the final AI message (set in nodes.py).
+        node_model_used = getattr(final_ai_msg, "additional_kwargs", {}).get("model_used", "unknown")
+
+        # Attach the metadata for frontend display.
+        final_ai_msg.additional_kwargs["tools_used"] = list(used_tools)
+        final_ai_msg.additional_kwargs["model_used"] = node_model_used
+
+        return final_ai_msg

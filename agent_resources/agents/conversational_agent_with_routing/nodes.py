@@ -4,7 +4,7 @@ from langgraph.graph import MessagesState
 import requests
 
 def default_llm_node(state: MessagesState, default_llm):
-    messages = state.get("messages", [])
+    messages = state['messages']
     response = default_llm.invoke(messages)
 
     model_name = getattr(default_llm, "model_name", getattr(default_llm, "model", "unknown"))
@@ -102,7 +102,7 @@ def react_logic_node(state: MessagesState, llm, tools, system_prompt, max_iterat
     return state
 
 def alternate_llm_node(state: MessagesState, alternate_llm):
-    messages = state.get("messages", [])
+    messages = state['messages']
     response = alternate_llm.invoke(messages)
 
     model_name = getattr(alternate_llm, "model_name", getattr(alternate_llm, "model", "unknown"))

@@ -17,7 +17,7 @@ Content-Type: application/json
 
 # curl http://localhost:8001/health
 
-# kubectl port-forward pod/agent-server-66cdf6c7c4-dpk8w 8001:8001
+# kubectl port-forward pod/agent-server-66cdf6c7c4-fhd68 8001:8001
  
 # docker run -p 8501:8501 sapdai/refd:agent-service-frontend
 
