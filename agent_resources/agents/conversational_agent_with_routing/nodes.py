@@ -1,4 +1,5 @@
 import json
+import logging
 from langchain_core.messages import AIMessage, ToolMessage, SystemMessage
 from langgraph.graph import MessagesState
 import requests
@@ -36,17 +37,20 @@ def routing_node(state: MessagesState) -> str:
 
     # Adjust the URL based on your container configuration.
     classifier_url = "http://classifier:8000/classify"
-
+    logging.info("ROUTING NODE")
     try:
         response = requests.post(classifier_url, json={"query": query}, timeout=5)
         response.raise_for_status()
         data = response.json()
         intent = data.get("intent", "")
-        
+        logging.info(f"intent: {intent}")
         # Route based on the classifier's intent.
         if intent.lower() == "research":
+            logging.info("routing to alternate node")
             return "alternate_llm_node"
+            
         else:
+            logging.info("routing to default node")
             return "default_llm_node"
     except requests.exceptions.RequestException as e:
         error_msg = f"Error routing query via classifier: {str(e)}"
