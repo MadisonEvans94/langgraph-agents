@@ -23,15 +23,37 @@ def default_llm_node(state: MessagesState, default_llm):
 
 
 
+
 def routing_node(state: MessagesState) -> str:
     """
-    Determines the next node by analyzing the user query.
-    Returns a string that maps to the name of the next node.
+    Determines the next node by sending the user query to the classifier container.
+    The classifier should return a JSON response with an "intent" key.
+    Returns a string that maps to the next node.
+    In case of errors, an error message is appended to the state and the default node is returned.
     """
     messages = state.get("messages", [])
     query = messages[-1].content if messages else "default query"
-    return "alternate_llm_node" if "research" in query.lower() else "default_llm_node"
 
+    # Adjust the URL based on your container configuration.
+    classifier_url = "http://classifier:8000/classify"
+
+    try:
+        response = requests.post(classifier_url, json={"query": query}, timeout=5)
+        response.raise_for_status()
+        data = response.json()
+        intent = data.get("intent", "")
+        
+        # Route based on the classifier's intent.
+        if intent.lower() == "research":
+            return "alternate_llm_node"
+        else:
+            return "default_llm_node"
+    except requests.exceptions.RequestException as e:
+        error_msg = f"Error routing query via classifier: {str(e)}"
+        messages.append(AIMessage(content=error_msg))
+        return "default_llm_node"
+
+        
 def check_tool_calls(state: MessagesState) -> str:
     """
     Checks the last AIMessage in state.
