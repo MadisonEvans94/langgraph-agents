@@ -25,32 +25,41 @@ def default_llm_node(state: MessagesState, default_llm):
 
 
 
+def call_classifier(query: str) -> str:
+    """
+    Sends a POST request to the classifier container with the given query.
+    Returns the intent string from the classifier's JSON response.
+    
+    Raises:
+        requests.exceptions.RequestException: If the request fails.
+    """
+    classifier_url = "http://classifier:8000/classify"
+    logging.info("Calling classifier with query: %s", query)
+    response = requests.post(classifier_url, json={"query": query}, timeout=5)
+    response.raise_for_status()
+    data = response.json()
+    intent = data.get("intent", "")
+    logging.info(f"Classifier returned intent: {intent}")
+    return intent
+
 def routing_node(state: MessagesState) -> str:
     """
-    Determines the next node by sending the user query to the classifier container.
-    The classifier should return a JSON response with an "intent" key.
-    Returns a string that maps to the next node.
-    In case of errors, an error message is appended to the state and the default node is returned.
+    Determines the next node by using the classifier's intent.
+    Calls `call_classifier` to retrieve the intent for the user query.
+    Routes to 'alternate_llm_node' if the intent is 'research'; otherwise, routes to 'default_llm_node'.
+    If an error occurs, an error message is appended to the state and the default node is returned.
     """
     messages = state.get("messages", [])
     query = messages[-1].content if messages else "default query"
-
-    # Adjust the URL based on your container configuration.
-    classifier_url = "http://classifier:8000/classify"
     logging.info("ROUTING NODE")
+    
     try:
-        response = requests.post(classifier_url, json={"query": query}, timeout=5)
-        response.raise_for_status()
-        data = response.json()
-        intent = data.get("intent", "")
-        logging.info(f"intent: {intent}")
-        # Route based on the classifier's intent.
+        intent = call_classifier(query)
         if intent.lower() == "research":
-            logging.info("routing to alternate node")
+            logging.info("Routing to alternate_llm_node")
             return "alternate_llm_node"
-            
         else:
-            logging.info("routing to default node")
+            logging.info("Routing to default_llm_node")
             return "default_llm_node"
     except requests.exceptions.RequestException as e:
         error_msg = f"Error routing query via classifier: {str(e)}"

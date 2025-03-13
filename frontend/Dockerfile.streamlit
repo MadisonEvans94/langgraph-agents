@@ -5,10 +5,10 @@ FROM python:3.10-slim
 WORKDIR /app
 
 # Copy only the Streamlit app file
-COPY streamlit_app.py .
+COPY . .
 
 # Install Streamlit only (no need for full requirements.txt)
-RUN pip install --no-cache-dir streamlit python-dotenv openai
+RUN pip install --no-cache-dir streamlit python-dotenv openai st_tailwind
 
 # Expose Streamlit's default port
 EXPOSE 8501
