@@ -102,25 +102,25 @@ class ConversationalAgentWithRouting(Agent):
             # Create a client that points to your vLLM endpoint.
             client = OpenAI(api_key=openai_api_key, base_url=base_url)
             
-            # llm = ChatVLLMWrapper(
-            #     client=client,
-            #     model=model_id,
-            #     max_new_tokens=config.get("max_new_tokens", 512),
-            #     temperature=temperature,
-            #     top_p=config.get("top_p", 1.0),
-            #     repetition_penalty=config.get("repetition_penalty", 1.0),
-            # )
-            llm = ChatOpenAI(
-                model="gpt-3.5-turbo",
-                temperature=0,
-                max_tokens=None,
-                timeout=None,
-                max_retries=2,
-                # api_key="...",  # if you prefer to pass api key in directly instaed of using env vars
-                # base_url="...",
-                # organization="...",
-                # other params...
+            llm = ChatVLLMWrapper(
+                client=client,
+                model=model_id,
+                max_new_tokens=config.get("max_new_tokens", 512),
+                temperature=temperature,
+                top_p=config.get("top_p", 1.0),
+                repetition_penalty=config.get("repetition_penalty", 1.0),
             )
+            # llm = ChatOpenAI(
+            #     model="gpt-3.5-turbo",
+            #     temperature=0,
+            #     max_tokens=None,
+            #     timeout=None,
+            #     max_retries=2,
+            #     # api_key="...",  # if you prefer to pass api key in directly instaed of using env vars
+            #     # base_url="...",
+            #     # organization="...",
+            #     # other params...
+            # )
             self.llm_dict[name] = llm
 
         return self.llm_dict

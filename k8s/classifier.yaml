@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: classifier
+  namespace: ogpt
+spec:
+  type: NodePort # Use NodePort if you need external access; otherwise, ClusterIP works well for internal communication.
+  selector:
+    app: classifier-server
+  ports:
+  - protocol: TCP
+    port: 4880 # The service port (external) on the node
+    targetPort: 8000 # The port the container listens on (as defined in your Dockerfile)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: classifier-server
+  namespace: ogpt
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: classifier-server
+  template:
+    metadata:
+      labels:
+        app: classifier-server
+    spec:
+      containers:
+      - name: classifier
+        image: sapdai/refd:agent-poc-classifier
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+      imagePullSecrets:
+      - name: dockerhub
+      nodeSelector:
+        nodetype: gaudi2-118
+      terminationGracePeriodSeconds: 5
