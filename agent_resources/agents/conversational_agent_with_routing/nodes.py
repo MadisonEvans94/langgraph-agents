@@ -45,9 +45,7 @@ def call_classifier(query: str) -> str:
 def routing_node(state: MessagesState) -> str:
     """
     Determines the next node by using the classifier's intent.
-    Calls `call_classifier` to retrieve the intent for the user query.
-    Routes to 'alternate_llm_node' if the intent is 'research'; otherwise, routes to 'default_llm_node'.
-    If an error occurs, an error message is appended to the state and the default node is returned.
+    Routes to 'alternate_llm_node' if intent is 'relevant'; otherwise, routes to 'default_llm_node'.
     """
     messages = state.get("messages", [])
     query = messages[-1].content if messages else "default query"
@@ -55,7 +53,7 @@ def routing_node(state: MessagesState) -> str:
     
     try:
         intent = call_classifier(query)
-        if intent.lower() == "research":
+        if intent.lower() == "relevant":
             logging.info("Routing to alternate_llm_node")
             return "alternate_llm_node"
         else:
@@ -65,6 +63,7 @@ def routing_node(state: MessagesState) -> str:
         error_msg = f"Error routing query via classifier: {str(e)}"
         messages.append(AIMessage(content=error_msg))
         return "default_llm_node"
+
 
         
 def check_tool_calls(state: MessagesState) -> str:

@@ -1,9 +1,13 @@
+# agent_factory.py
 from typing import Dict, Type
 from langgraph.checkpoint.memory import MemorySaver
-from .agents.conversational_agent_with_routing.conversational_agent_with_routing import ConversationalAgentWithRouting
+from .agents.conversational_agent_with_routing.conversational_agent_with_routing import (
+    ConversationalAgentWithRouting,
+)
 from agent_resources.base_agent import Agent
 from .agents.conversational_agent.conversational_agent import ConversationalAgent
 import uuid
+
 
 class AgentFactory:
     """
@@ -15,11 +19,16 @@ class AgentFactory:
         self.thread_id = thread_id if thread_id else str(uuid.uuid4())
 
         self.agent_registry: Dict[str, Type[Agent]] = {
-            'conversational_agent': ConversationalAgent,
-            'conversational_agent_with_routing': ConversationalAgentWithRouting, 
+            "conversational_agent": ConversationalAgent,
+            "conversational_agent_with_routing": ConversationalAgentWithRouting,
         }
-    
-    def factory(self, agent_type: str, **kwargs) -> Agent:
+
+    def factory(
+        self,
+        agent_type: str,
+        use_openai: bool = False,
+        **kwargs
+    ) -> Agent:
         """
         Create an agent instance.
         Additional kwargs (such as llm_configs) will be passed to the agent's constructor.
@@ -28,5 +37,7 @@ class AgentFactory:
         if agent_class is None:
             raise ValueError(f"Unknown agent type: {agent_type}")
 
-        # Pass the shared memory, thread_id, and any additional configuration to the agent.
-        return agent_class(memory=self.memory, thread_id=self.thread_id, **kwargs)
+        # Pass the shared memory, thread_id, use_openai flag, and any additional configuration to the agent.
+        return agent_class(
+            memory=self.memory, thread_id=self.thread_id, use_openai=use_openai, **kwargs
+        )

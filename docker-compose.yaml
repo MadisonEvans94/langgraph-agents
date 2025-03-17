@@ -2,7 +2,7 @@ services:
   agent-service:
     build:
       context: .
-      dockerfile: Dockerfile       # points to your root Dockerfile
+      dockerfile: Dockerfile.agent-service       # points to your root Dockerfile
     container_name: agent-service
     ports:
       - "8001:8001"               # exposes agent on localhost:8001

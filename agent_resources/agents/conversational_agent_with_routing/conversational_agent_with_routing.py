@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from typing import Dict
 from agent_resources.prompts import REACT_AGENT_SYSTEM_PROMPT
-from agent_resources.utils import ChatVLLMWrapper 
+from agent_resources.utils import ChatVLLMWrapper
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.graph import StateGraph, END
@@ -13,7 +13,7 @@ from agent_resources.base_agent import Agent
 
 from .nodes import (
     default_llm_node,
-    routing_node,  
+    routing_node,
     alternate_llm_node
 )
 from langgraph.graph import MessagesState
@@ -22,12 +22,14 @@ load_dotenv(override=True)
 
 logger = logging.getLogger(__name__)
 
+
 class ConversationalAgentWithRouting(Agent):
     def __init__(
-        self, 
-        llm_configs: Dict = None, 
-        memory=None, 
-        thread_id=None
+        self,
+        llm_configs: Dict = None,
+        memory=None,
+        thread_id=None,
+        use_openai: bool = False,
     ):
         """
         :param llm_configs: Dictionary describing how to build each LLM.
@@ -54,9 +56,11 @@ class ConversationalAgentWithRouting(Agent):
                             }
         :param memory: Checkpoint memory (optional).
         :param thread_id: Unique identifier for sessions (optional).
+        :param use_openai: Whether to use ChatOpenAI (True) or ChatVLLMWrapper (False) for LLM.
         """
         self.memory = memory if memory else MemorySaver()
         self.thread_id = thread_id if thread_id else "default"
+        self.use_openai = use_openai
 
         # Build the dictionary of LLMs (including default_llm and alternate_llm)
         self.build_llm_dict(llm_configs)
@@ -66,16 +70,12 @@ class ConversationalAgentWithRouting(Agent):
 
     def build_llm_dict(self, llm_configs: Dict) -> Dict[str, object]:
         """
-        Uses ChatVLLMWrapper to call your custom vLLM endpoint.
-        The llm_configs should include keys like "model_id", "base_url", etc.
-        Expected configuration keys (e.g., in your config.yaml):
-        - default_llm
-        - alternate_llm
+        Dynamically uses either ChatVLLMWrapper or ChatOpenAI based on self.use_openai.
+        If use_openai=True, uses ChatOpenAI; otherwise, uses ChatVLLMWrapper.
         """
         if llm_configs is None:
             raise ValueError("llm_configs cannot be None. Please provide a valid configuration dictionary.")
 
-        # Ensure required llm keys are present.
         required_keys = ["default_llm", "alternate_llm"]
         for key in required_keys:
             if key not in llm_configs:
@@ -83,47 +83,50 @@ class ConversationalAgentWithRouting(Agent):
 
         self.llm_dict = {}
 
-        # Build an LLM for each config key provided.
         for name, config in llm_configs.items():
             if not config:
                 raise ValueError(f"Configuration for '{name}' is empty. Please provide a valid configuration.")
-            
-            model_id = config.get("model_id")
-            if model_id is None:
-                raise ValueError(f"Configuration for '{name}' must include 'model_id'.")
 
-            base_url = config.get("base_url")
-            if base_url is None:
-                raise ValueError(f"Configuration for '{name}' must include 'base_url'.")
+            model_id = config.get("model_id") or config.get("model")  # Ensure OpenAI model key works
+            if model_id is None:
+                raise ValueError(f"Configuration for '{name}' must include 'model_id' or 'model'.")
 
             temperature = config.get("temperature", 0.7)
             openai_api_key = config.get("api_key", "")
+            max_new_tokens = config.get("max_new_tokens", 512)
+            top_p = config.get("top_p", 1.0)
+            repetition_penalty = config.get("repetition_penalty", 1.0)
 
-            # Create a client that points to your vLLM endpoint.
-            client = OpenAI(api_key=openai_api_key, base_url=base_url)
-            
-            llm = ChatVLLMWrapper(
-                client=client,
-                model=model_id,
-                max_new_tokens=config.get("max_new_tokens", 512),
-                temperature=temperature,
-                top_p=config.get("top_p", 1.0),
-                repetition_penalty=config.get("repetition_penalty", 1.0),
-            )
-            # llm = ChatOpenAI(
-            #     model="gpt-3.5-turbo",
-            #     temperature=0,
-            #     max_tokens=None,
-            #     timeout=None,
-            #     max_retries=2,
-            #     # api_key="...",  # if you prefer to pass api key in directly instaed of using env vars
-            #     # base_url="...",
-            #     # organization="...",
-            #     # other params...
-            # )
+            if self.use_openai:
+                # OpenAI does NOT require a base_url
+                llm = ChatOpenAI(
+                    model=model_id,
+                    temperature=temperature,
+                    max_tokens=None,  # or a suitable integer if needed
+                    timeout=None,
+                    max_retries=2,
+                    openai_api_key=openai_api_key,
+                )
+            else:
+                # vLLM requires base_url
+                base_url = config.get("base_url")
+                if base_url is None:
+                    raise ValueError(f"Configuration for '{name}' must include 'base_url' when using vLLM.")
+
+                client = OpenAI(api_key=openai_api_key, base_url=base_url)
+                llm = ChatVLLMWrapper(
+                    client=client,
+                    model=model_id,
+                    max_new_tokens=max_new_tokens,
+                    temperature=temperature,
+                    top_p=top_p,
+                    repetition_penalty=repetition_penalty,
+                )
+
             self.llm_dict[name] = llm
 
         return self.llm_dict
+
 
     def _build_system_prompt(self) -> str:
         """
@@ -146,7 +149,7 @@ class ConversationalAgentWithRouting(Agent):
         # Add conditional edges using routing_node to determine the next node.
         state_graph.add_conditional_edges(
             "routing_pass",
-            routing_node,  
+            routing_node,
             path_map={
                 "alternate_llm_node": "alternate_llm_node",
                 "default_llm_node": "default_llm_node",
@@ -165,22 +168,26 @@ class ConversationalAgentWithRouting(Agent):
         self.state_graph = state_graph.compile(checkpointer=self.memory)
 
     def run(self, message: HumanMessage):
-        """
-        Processes a single user query (HumanMessage) by invoking the state graph,
-        then extracts metadata (tools used, model used) for the frontend.
-        """
         try:
             config = {
                 "configurable": {
                     "thread_id": self.thread_id,
-                    "checkpoint_ns": "default",
-                    "checkpoint_id": "default"
                 }
             }
 
-            # Invoke the state graph.
+            # Invoke the graph, passing thread_id ensures memory persistence.
             response = self.state_graph.invoke({"messages": [message]}, config=config)
-            return self._extract_response_metadata(response, message)
+
+            # Always pick the last message directly.
+            ai_message = response["messages"][-1]
+
+            if isinstance(ai_message, AIMessage):
+                # Optionally add metadata if desired
+                ai_message.additional_kwargs["model_used"] = ai_message.additional_kwargs.get("model_used", "unknown")
+                return ai_message
+            else:
+                logger.error("Unexpected message type in response.")
+                raise ValueError("Expected AIMessage in the response.")
 
         except Exception as e:
             logger.error("Error generating response", exc_info=True)
