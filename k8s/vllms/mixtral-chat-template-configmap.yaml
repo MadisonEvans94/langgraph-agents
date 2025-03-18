@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mixtral-chat-template
+  namespace: ogpt
+data:
+  mixtral_chat_template.jinja: |
+    {% for message in messages %}
+    {{ '[INST] ' + message['content'] + ' [/INST]' if message['role'] == 'user' else message['content'] }}
+    {% endfor %}
