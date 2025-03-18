@@ -1,0 +1,33 @@
+
+# For Local Development 
+services:
+  agent-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent-service      
+    container_name: agent-service
+    ports:
+      - "8001:8001"               
+    depends_on:
+      - classifier
+
+  classifier:
+    build:
+      context: ./intents
+      dockerfile: Dockerfile.classifier
+    container_name: classifier
+    image: sapdai/refd:agent-poc-classifier
+    ports:
+      - "8000:8000"              
+
+  streamlit:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.streamlit
+    container_name: streamlit
+    ports:
+      - "8501:8501"               
+    depends_on:
+      - agent-service           
+    environment:
+      - AGENT_SERVICE_URL=http://agent-service:8001/ask

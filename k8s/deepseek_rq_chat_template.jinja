@@ -1,0 +1,39 @@
+{% if not add_generation_prompt is defined %}
+    {% set add_generation_prompt = false %}
+{% endif %}
+{% set ns = namespace(is_first=false, is_tool=false, is_output_first=true, system_prompt='') %}
+{%- for message in messages %}
+    {%- if message['role'] == 'system' %}
+        {% set ns.system_prompt = message['content'] %}
+    {%- endif %}
+{%- endfor %}
+{{bos_token}}
+{{ns.system_prompt}}
+{%- for message in messages %}
+    {%- if message['role'] == 'user' %}
+        {%- set ns.is_tool = false -%}
+        {{'<|User|>' + message['content']}}
+    {%- endif %}
+    {%- if message['role'] == 'assistant' and message['content'] is none %}
+        {%- set ns.is_tool = false -%}
+        {%- for tool in message['tool_calls']%}
+            {%- if not ns.is_first %}
+                {{'<|Assistant|><|tool_calls_begin|><|tool_call_begin|>' + tool['type'] + '<|tool_sep|>' + tool['function']['name'] + '\n' + '```json' + '\n' + tool['function']['arguments'] + '\n' + '```' + '<|tool_call_end|>'}}
+                {%- set ns.is_first = true -%}
+            {%- else %}
+                {'\n' + '<|tool_call_begin|>' + tool['type'] + '<|tool_sep|>' + tool['function']['name'] + '\n' + '```json' + '\n' + tool['function']['arguments'] + '\n' + '```' + '<|tool_call_end|>'}
+                {{'<|tool_calls_end|><|end_of_sentence|>'}}
+            {%- endif %}
+        {%- endfor %}
+    {%- endif %}
+    {%- if message['role'] == 'assistant' and message['content'] is not none %}
+        {%- if ns.is_tool %}
+            {{'<|tool_outputs_begin|>'}}
+        {%- endif %}
+        {{'<|Assistant|>' + message['content']}}
+        {%- if ns.is_tool %}
+            {{'<|tool_outputs_end|><|end_of_sentence|>'}}
+        {%- endif %}
+        {%- set ns.is_tool = false -%}
+    {%- endif %}
+{%- endfor %}

@@ -1,0 +1,27 @@
+# Health Check Endpoint
+GET http://localhost:8001/health
+Content-Type: application/json
+
+###
+
+# Ask Endpoint
+POST http://localhost:8001/ask
+Content-Type: application/json
+
+{
+  "agent_type": "conversational_agent_with_routing",
+  "user_query": "what's the weather like today in Austin?"
+}
+
+# curl -X POST http://localhost:8001/ask -H "Content-Type: application/json" -d '{"agent_type": "conversational_agent", "user_query": "I'm glad to hear that. Tell me a joke?"}'
+
+# curl http://localhost:8001/health
+
+# kubectl port-forward pod/agent-stack-agent-78988df5f5-lz2v4 8001:8001
+ 
+# docker run --network=host \
+#   -e AGENT_SERVICE_URL="http://localhost:8001/ask" \
+#   sapdai/refd:agent-service-frontend
+
+# helm install agent-stack . --namespace ogpt --create-namespace
+# helm upgrade agent-stack . --namespace ogpt

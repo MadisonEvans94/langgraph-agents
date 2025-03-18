@@ -4,11 +4,10 @@ from agent_resources.base_agent import Agent
 from agent_resources.prompts import REACT_AGENT_SYSTEM_PROMPT
 from agent_resources.tools.tool_registry import ToolRegistry
 from langgraph.prebuilt import create_react_agent
-import uuid
 
 logger = logging.getLogger(__name__)
 
-tools = ToolRegistry.get_tools(['retrieve_documents','tavily_search'])
+tools = ToolRegistry.get_tools(['tavily_search'])
 
 class ReactAgent(Agent):
     def __init__(self, llm, memory=None, thread_id=None, tools=tools):

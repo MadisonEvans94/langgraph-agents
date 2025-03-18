@@ -1,0 +1,23 @@
+# Use an official Python runtime as a base image
+FROM python:3.10-slim
+
+# Set the working directory in the container
+WORKDIR /app
+
+# Copy only the Streamlit app file
+COPY . .
+
+# Install Streamlit only (no need for full requirements.txt)
+RUN pip install --no-cache-dir streamlit python-dotenv openai st_tailwind
+
+# Expose Streamlit's default port
+EXPOSE 8501
+
+# Set environment variable to disable usage stats prompt
+ENV STREAMLIT_BROWSER_GATHER_USAGE_STATS false
+
+# ENV AGENT_SERVICE_URL="http://agent-service:8001/ask"
+ENV AGENT_SERVICE_URL="http://localhost:8001/ask"
+
+# Command to run the Streamlit app
+CMD ["streamlit", "run", "streamlit_app.py", "--server.port=8501", "--server.address=0.0.0.0"]
