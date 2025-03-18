@@ -97,7 +97,7 @@ class ChatVLLMWrapper:
                     #    so the model can do function calling properly.
                     if hasattr(tool, "args_schema") and isinstance(tool.args_schema, type) \
                        and issubclass(tool.args_schema, BaseModel):
-                        pydantic_schema = tool.args_schema.schema()
+                        pydantic_schema = tool.args_schema.model_json_schema()
                         # Make sure top-level says "type": "object"
                         pydantic_schema["type"] = "object"
                         func_def["parameters"] = pydantic_schema

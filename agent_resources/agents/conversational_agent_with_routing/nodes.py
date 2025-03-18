@@ -1,6 +1,6 @@
 import json
 import logging
-from langchain_core.messages import AIMessage, ToolMessage, SystemMessage
+from langchain_core.messages import AIMessage, ToolMessage, SystemMessage, HumanMessage
 from langgraph.graph import MessagesState
 import requests
 
@@ -24,7 +24,7 @@ def default_llm_node(state: MessagesState, default_llm):
 
 
 
-
+#TODO: make the classifier url a constant passed down 
 def call_classifier(query: str) -> str:
     """
     Sends a POST request to the classifier container with the given query.
@@ -33,14 +33,21 @@ def call_classifier(query: str) -> str:
     Raises:
         requests.exceptions.RequestException: If the request fails.
     """
-    classifier_url = "http://classifier:8000/classify"
+    # Point to 'agent-stack-classifier' instead of 'classifier'
+    # so it matches your K8s Service name and local Docker Compose container name
+    classifier_url = "http://agent-stack-classifier:8000/classify"
+    # classifier_url = "http://classifier:8000/classify"
+
     logging.info("Calling classifier with query: %s", query)
     response = requests.post(classifier_url, json={"query": query}, timeout=5)
     response.raise_for_status()
     data = response.json()
+    
     intent = data.get("intent", "")
+    logging.info(intent)
     logging.info(f"Classifier returned intent: {intent}")
     return intent
+
 
 def routing_node(state: MessagesState) -> str:
     """
@@ -137,7 +144,21 @@ def react_logic_node(state: MessagesState, llm, tools, system_prompt, max_iterat
 
 def alternate_llm_node(state: MessagesState, alternate_llm):
     messages = state['messages']
-    response = alternate_llm.invoke(messages)
+    # Extract only the most recent human message
+    last_human = None
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            last_human = msg
+            break
+    if last_human is None:
+        # Fallback: if no human message is found, use the last message available.
+        last_human = messages[-1]
+    
+    # Optionally log the selected message
+    logging.info(f"Alternate LLM node using last human message: {last_human}")
+    
+    # Invoke alternate_llm with just the most recent human message
+    response = alternate_llm.invoke([last_human])
 
     model_name = getattr(alternate_llm, "model_name", getattr(alternate_llm, "model", "unknown"))
 

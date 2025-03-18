@@ -9,7 +9,7 @@ classifier:
     tag: agent-poc-classifier
     pullPolicy: Always
   containerPort: 8000
-  servicePort: 4880
+  servicePort: 8000
   nodeSelector:
     nodetype: gaudi2-118
   resources:

@@ -17,7 +17,7 @@ from .utils import load_llm_configs
 load_dotenv()
 
 # Decide if we're using openai or not
-USE_OPENAI = True
+USE_OPENAI = False
 
 # Load entire config
 all_configs = load_llm_configs()
@@ -59,7 +59,7 @@ agent = agent_factory.factory(
 async def ask_question(request: QueryRequest):
     start_time = time.perf_counter()
     user_query = request.user_query
-    agent_type = request.agent_type  # Currently unused, could remove later
+    # agent_type = request.agent_type  # Currently unused, could remove later
 
     human_message = HumanMessage(content=user_query)
 
