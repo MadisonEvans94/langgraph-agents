@@ -1,11 +1,13 @@
+
+# For Local Development 
 services:
   agent-service:
     build:
       context: .
-      dockerfile: Dockerfile.agent-service       # points to your root Dockerfile
+      dockerfile: Dockerfile.agent-service      
     container_name: agent-service
     ports:
-      - "8001:8001"               # exposes agent on localhost:8001
+      - "8001:8001"               
     depends_on:
       - classifier
 
@@ -16,7 +18,7 @@ services:
     container_name: classifier
     image: sapdai/refd:agent-poc-classifier
     ports:
-      - "8000:8000"               # exposes classifier on localhost:8000
+      - "8000:8000"              
 
   streamlit:
     build:
@@ -24,8 +26,8 @@ services:
       dockerfile: Dockerfile.streamlit
     container_name: streamlit
     ports:
-      - "8501:8501"               # exposes Streamlit on localhost:8501
+      - "8501:8501"               
     depends_on:
-      - agent-service             # ensures agent starts first
+      - agent-service           
     environment:
       - AGENT_SERVICE_URL=http://agent-service:8001/ask
