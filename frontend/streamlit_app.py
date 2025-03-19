@@ -49,10 +49,9 @@ div[role="textbox"] {
 
 # 5) Sidebar with application information
 with st.sidebar:
-    tw.write("ℹ️ About This App", classes="text-xl font-semibold text-white mb-4")
     tw.write(
         """
-        This is an **LLM-powered chatbot demo** built with Streamlit and Tailwind CSS.
+        This is a **context based LLM routing** application built with Streamlit and Tailwind CSS.
 
         💡 **Features**:
         - Conversational AI with routing

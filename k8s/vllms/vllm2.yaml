@@ -74,18 +74,11 @@ spec:
             hugepages-2Mi: 8000Mi
         command: [ "bash", "-c" ]
         args:
-        - 'python -m vllm.entrypoints.openai.api_server --model=mistralai/Mixtral-8x7B-v0.1 --port 8000 --device hpu --tensor-parallel-size 1 --pipeline-parallel-size 1 --dtype bfloat16 --max-num-seqs 128 --block-size 128 --chat-template /templates/mixtral_chat_template.jinja'
+        - 'python -m vllm.entrypoints.openai.api_server --model=mistralai/Mixtral-8x7B-Instruct-v0.1 --port 8000 --device hpu --tensor-parallel-size 1 --pipeline-parallel-size 1 --dtype bfloat16 --max-num-seqs 128 --block-size 128'
         ports:
         - containerPort: 8000
-        volumeMounts:
-        - name: chat-template-volume
-          mountPath: /templates
       imagePullSecrets:
       - name: dockerhub
       nodeSelector:
         nodetype: gaudi2-118
-      volumes:
-      - name: chat-template-volume
-        configMap:
-          name: mixtral-chat-template
       terminationGracePeriodSeconds: 5
