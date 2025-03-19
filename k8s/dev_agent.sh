@@ -3,14 +3,14 @@ help() {
   echo "Options are: "
   echo -e "\t -b, --build \t\t\t build and push images"
   echo -e "\t -d, --deploy-agent [NAME] \t deploy agent with optional name"
-  echo -e "\t --deploy-vllm \t\t\t deploy vllm"
+  echo -e "\t --vllm-config [CONFIG] \t specify vllm config"
   echo -e "\t -t, --test \t\t\t test the deployed agent"
   echo -e "\t -h, --help \t\t\t print help"    
 }
 
 _build=false
 _deploy_agent=false
-_deploy_vllm=false
+_vllm_config=""
 _deploy_name=as
 _uninstall=false
 _test=false
@@ -40,6 +40,12 @@ do
     --deploy-vllm)
         _deploy_vllm=true
         ;;
+    --vllm-config)
+        shift
+        if [ -n "$1" ]; then
+          _vllm_config=$1
+        fi
+        ;;
     -t  | --test)
         _test=true
         ;;
@@ -61,6 +67,7 @@ print_flags() {
   echo "Build: $_build"
   echo "Deploy Agent: $_deploy_agent"
   echo "Deploy VLLM: $_deploy_vllm"
+  echo "VLLM Config: $_vllm_config"
   echo "Uninstall: $_uninstall"
 }
 
@@ -79,7 +86,6 @@ if [ "$_deploy_agent" = true ]; then
   helm upgrade --install ${_deploy_name} agent-stack --namespace $DEPLOY_NS --wait --timeout 30s
 fi
 
-
 if [ "$_test" = true ]; then
   app=${_deploy_name}-agent-client
   client_pod=$(kubectl get pods -l app=$app --namespace $DEPLOY_NS --no-headers | awk '{print $1}')
@@ -97,3 +103,6 @@ if [ "$_uninstall" = true ]; then
   echo "Uninstalling agent..."
   helm uninstall ${_deploy_name} --namespace $DEPLOY_NS
 fi
+
+# todo add image name
+# todo add config name
