@@ -76,13 +76,9 @@ fi
 
 if [ "$_deploy_agent" = true ]; then
   echo "Deploying agent..."
-  helm upgrade --install ${_deploy_name} agent-stack --namespace $DEPLOY_NS
+  helm upgrade --install ${_deploy_name} agent-stack --namespace $DEPLOY_NS --wait --timeout 30s
 fi
 
-if [ "$_uninstall" = true ]; then
-  echo "Uninstalling agent..."
-  helm uninstall ${_deploy_name} --namespace $DEPLOY_NS
-fi
 
 if [ "$_test" = true ]; then
   app=${_deploy_name}-agent-client
@@ -90,8 +86,14 @@ if [ "$_test" = true ]; then
   target_service_host=$(kubectl get pod $client_pod -o jsonpath="{.spec.containers[0].env[?(@.name=='TARGET_SERVICE_HOST')].value}")
   target_service_port=$(kubectl get pod $client_pod -o jsonpath="{.spec.containers[0].env[?(@.name=='TARGET_SERVICE_PORT')].value}")
   url="$target_service_host:$target_service_port/ask"
+  
   json_payload='{ "agent_type": "conversational_agent_with_routing", "user_query": "hi" }'
   echo "Testing agent..."
   kubectl exec $client_pod --namespace $DEPLOY_NS -- \
     curl --no-buffer -s $url -X POST -d "$json_payload" -H 'Content-Type: application/json'  
+fi
+
+if [ "$_uninstall" = true ]; then
+  echo "Uninstalling agent..."
+  helm uninstall ${_deploy_name} --namespace $DEPLOY_NS
 fi

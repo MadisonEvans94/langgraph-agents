@@ -8,6 +8,7 @@ metadata:
   labels:
     app: {{ .Release.Name }}-agent-client
 spec:
+  terminationGracePeriodSeconds: 5
   containers:
     - name: {{ .Release.Name }}-agent-client
       image: curlimages/curl
