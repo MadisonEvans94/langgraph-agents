@@ -27,6 +27,10 @@ agent:
   containerPort: 8001
   servicePort: 4881
   configFile: "default.yaml"
+  openaiSecret:
+    enabled: true
+    secretName: openai
+    secretKey: OPENAI
   # Example environment variables
   env:
     LOCAL_SERVICE_NAME: "vllm"

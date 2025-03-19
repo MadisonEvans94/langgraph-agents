@@ -15,10 +15,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
-
 # Ensure scripts are executable
 RUN chmod +x agent_service/setup_service_env.sh agent_service/start_service.sh
-
+RUN ls -lah /app
 # Expose the port that the FastAPI app will run on
 EXPOSE 8001
 

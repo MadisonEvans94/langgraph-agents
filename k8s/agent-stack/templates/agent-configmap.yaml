@@ -3,5 +3,5 @@ kind: ConfigMap
 metadata:
   name: {{ .Release.Name }}-agent-llm-config
 data:
- agent_config: |
-    {{ .Files.Get (print "file_configs/" .Values.agent.configFile) | indent 4 }}
+  config.yaml: |
+{{ .Files.Get (print "file_configs/" .Values.agent.configFile) | indent 4 }}

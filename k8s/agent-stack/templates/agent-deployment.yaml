@@ -12,6 +12,10 @@ spec:
       labels:
         app: {{ .Release.Name }}-agent-server
     spec:
+      volumes:
+        - name: vllm-config-volume
+          configMap:
+            name: {{ .Release.Name }}-agent-llm-config   
       containers:
         - name: agent-server
           image: "{{ .Values.agent.image.repository }}:{{ .Values.agent.image.tag }}"
@@ -20,6 +24,10 @@ spec:
           args: [ "./agent_service/start_service.sh" ]
           ports:
             - containerPort: {{ .Values.agent.containerPort }}
+          volumeMounts:
+            - name: vllm-config-volume
+              mountPath: /app/config.yaml
+              subPath: config.yaml
           env:
             - name: LOCAL_NODE_NAME
               valueFrom:
@@ -47,6 +55,11 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.agent.hfSecret.secretName }}
                   key: {{ .Values.agent.hfSecret.secretKey }}
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.agent.openaiSecret.secretName }}
+                  key: {{ .Values.agent.openaiSecret.secretKey }}                  
 {{- end }}
           resources:
             requests:

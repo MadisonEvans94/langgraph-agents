@@ -1,12 +1,12 @@
 #!/bin/bash
 
 # Source the .env file
-if [[ -f ".env" ]]; then
-  export $(grep -v '^#' .env | xargs -d '\n')
-else
-  echo "ERROR: .env file not found!"
-  exit 1
-fi
+#if [[ -f ".env" ]]; then
+#  export $(grep -v '^#' .env | xargs -d '\n')
+#else
+#  echo "ERROR: .env file not found!"
+#  exit 1
+#fi
 
 # LANGSMITH TRACING
 export LANGSMITH_TRACING=${LANGSMITH_TRACING:-"false"}

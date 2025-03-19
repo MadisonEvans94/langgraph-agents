@@ -15,7 +15,7 @@ _deploy_name=as
 _uninstall=false
 _test=false
 _image_repo=sapdai/refd
-_agent_image_tag=agent-service-v4-rrin
+_agent_image_tag=agent-service-v3-rrin
 #_agent_image_tag=agent-service-v3
 _agent_image_full_name=$_image_repo:$_agent_image_tag
 DEPLOY_NS=ogpt
@@ -75,10 +75,10 @@ print_flags
 
 if [ "$_build" = true ]; then
   echo "Building and pushing images..."
-  pushd ../
-  docker build -t $_agent_image_full_name -f Dockerfile.agent-service .
+  cd ..
+  docker build --progress=plain -t $_agent_image_full_name -f Dockerfile.agent-service  .
   docker push $_agent_image_full_name
-  popd
+  cd k8s
 fi
 
 if [ "$_uninstall" = true ]; then
@@ -91,8 +91,15 @@ if [ "$_deploy_agent" = true ]; then
   echo "Deploying agent..."
 # todo add config name
 
+if [ -n "$_vllm_config" ]; then
+  echo "Use _vllm_config"
+  helm upgrade --install ${_deploy_name} agent-stack --namespace $DEPLOY_NS \
+        --wait --timeout 30s --set agent.image.tag=$_agent_image_tag --set agent.configFile=$_vllm_config
+else
+  echo "Use default vllm config"
   helm upgrade --install ${_deploy_name} agent-stack --namespace $DEPLOY_NS \
         --wait --timeout 30s --set agent.image.tag=$_agent_image_tag
+fi
 fi
 
 if [ "$_test" = true ]; then
@@ -103,7 +110,7 @@ if [ "$_test" = true ]; then
   url="$target_service_host:$target_service_port/ask"
   
   json_payload='{ "agent_type": "conversational_agent_with_routing", "user_query": "hi" }'
-  echo "Testing agent..."
+  echo "Testing agent using $url"
   kubectl exec $client_pod --namespace $DEPLOY_NS -- \
     curl --no-buffer -s $url -X POST -d "$json_payload" -H 'Content-Type: application/json'  
 fi
