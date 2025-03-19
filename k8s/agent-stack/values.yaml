@@ -26,6 +26,7 @@ agent:
     pullPolicy: Always
   containerPort: 8001
   servicePort: 4881
+  config: "files_config/default.yaml"
   # Example environment variables
   env:
     LOCAL_SERVICE_NAME: "vllm"
