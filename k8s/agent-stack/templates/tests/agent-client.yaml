@@ -1,0 +1,20 @@
+# Copyright (C) 2024-2025 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ .Release.Name }}-agent-client
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: {{ .Release.Name }}-agent-client
+spec:
+  containers:
+    - name: {{ .Release.Name }}-agent-client
+      image: curlimages/curl
+      command: ["sleep", "infinity"]
+      imagePullPolicy: IfNotPresent
+      env:
+        - name: TARGET_SERVICE_HOST
+          value: "http://{{ .Release.Name }}-agent.{{ .Values.namespace }}.svc.cluster.local"
+        - name: TARGET_SERVICE_PORT
+          value: "{{ .Values.agent.servicePort }}"
