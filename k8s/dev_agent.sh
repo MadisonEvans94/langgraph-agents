@@ -14,6 +14,10 @@ _vllm_config=""
 _deploy_name=as
 _uninstall=false
 _test=false
+_image_repo=sapdai/refd
+_agent_image_tag=agent-service-v4-rrin
+#_agent_image_tag=agent-service-v3
+_agent_image_full_name=$_image_repo:$_agent_image_tag
 DEPLOY_NS=ogpt
 
 if [ ! -n "$1" ]; then
@@ -36,9 +40,6 @@ do
         if [ -n "$1" ]; then
           _deploy_name=$1
         fi
-        ;;
-    --deploy-vllm)
-        _deploy_vllm=true
         ;;
     --vllm-config)
         shift
@@ -66,7 +67,6 @@ done
 print_flags() {
   echo "Build: $_build"
   echo "Deploy Agent: $_deploy_agent"
-  echo "Deploy VLLM: $_deploy_vllm"
   echo "VLLM Config: $_vllm_config"
   echo "Uninstall: $_uninstall"
 }
@@ -76,14 +76,23 @@ print_flags
 if [ "$_build" = true ]; then
   echo "Building and pushing images..."
   pushd ../
-  docker build -t sapdai/refd:agent-service-v3 -f Dockerfile.agent-service .
-  docker push sapdai/refd:agent-service-v3
+  docker build -t $_agent_image_full_name -f Dockerfile.agent-service .
+  docker push $_agent_image_full_name
   popd
+fi
+
+if [ "$_uninstall" = true ]; then
+  echo "Uninstalling agent..."
+  helm uninstall ${_deploy_name} --namespace $DEPLOY_NS
+  exit
 fi
 
 if [ "$_deploy_agent" = true ]; then
   echo "Deploying agent..."
-  helm upgrade --install ${_deploy_name} agent-stack --namespace $DEPLOY_NS --wait --timeout 30s
+# todo add config name
+
+  helm upgrade --install ${_deploy_name} agent-stack --namespace $DEPLOY_NS \
+        --wait --timeout 30s --set agent.image.tag=$_agent_image_tag
 fi
 
 if [ "$_test" = true ]; then
@@ -99,10 +108,4 @@ if [ "$_test" = true ]; then
     curl --no-buffer -s $url -X POST -d "$json_payload" -H 'Content-Type: application/json'  
 fi
 
-if [ "$_uninstall" = true ]; then
-  echo "Uninstalling agent..."
-  helm uninstall ${_deploy_name} --namespace $DEPLOY_NS
-fi
 
-# todo add image name
-# todo add config name
