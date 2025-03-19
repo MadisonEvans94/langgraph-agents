@@ -43,9 +43,7 @@ do
         ;;
     --vllm-config)
         shift
-        if [ -n "$1" ]; then
-          _vllm_config=$1
-        fi
+        _vllm_config=$1
         ;;
     -t  | --test)
         _test=true
