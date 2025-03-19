@@ -1,18 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "agent-stack.classifierFullname" . }}
-  labels:
-    app: {{ include "agent-stack.classifierName" . }}
+  name: {{ .Release.Name }}-classifier-server
 spec:
   replicas: {{ .Values.classifier.replicaCount }}
   selector:
     matchLabels:
-      app: {{ include "agent-stack.classifierName" . }}
+      app: {{ .Release.Name }}-classifier-server
   template:
     metadata:
       labels:
-        app: {{ include "agent-stack.classifierName" . }}
+        app: {{ .Release.Name }}-classifier-server
     spec:
       containers:
         - name: classifier

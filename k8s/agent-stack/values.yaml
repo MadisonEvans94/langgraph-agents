@@ -1,5 +1,3 @@
-# Default namespace to deploy into. If you don't specify --namespace at install time,
-# you can use 'ogpt' or any other.
 namespace: ogpt
 
 classifier:

@@ -1,18 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "agent-stack.agentFullname" . }}
-  labels:
-    app: {{ include "agent-stack.agentName" . }}
+  name: {{ .Release.Name }}-agent-server
 spec:
   replicas: {{ .Values.agent.replicaCount }}
   selector:
     matchLabels:
-      app: {{ include "agent-stack.agentName" . }}
+      app: {{ .Release.Name }}-agent-server
   template:
     metadata:
       labels:
-        app: {{ include "agent-stack.agentName" . }}
+        app: {{ .Release.Name }}-agent-server
     spec:
       containers:
         - name: agent-server
