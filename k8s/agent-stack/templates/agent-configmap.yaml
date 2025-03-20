@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-agent-llm-config
+data:
+  config.yaml: |
+{{ .Files.Get (print "file_configs/" .Values.agent.configFile) | indent 4 }}
