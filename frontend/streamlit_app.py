@@ -56,34 +56,42 @@ if user_input:
         logger.info("Received successful response from /ask_stream")
 
         # Streaming response processing
-        agent_reply = ""
+        agent_reply = [""]  # Using a mutable list to avoid `nonlocal`
+
         with st.chat_message("assistant", avatar=":material/robot_2:"):
-            response_placeholder = st.empty()  # Placeholder for updating text
+            response_placeholder = st.empty()  # Create a single placeholder for streaming updates
 
             def stream_generator():
-                """Yields streaming tokens as they arrive."""
+                """Yields streaming tokens as they arrive and updates response text."""
                 for line in response.iter_lines():
                     if line:
                         logger.debug(f"Raw streamed line: {line}")
                         try:
                             json_data = json.loads(line)
                             if "data" in json_data and isinstance(json_data["data"], str):
-                                logger.info(f"Received streamed data: {json_data['data']!r}")
-                                yield json_data["data"]  # Stream only the content text
+                                chunk = json_data["data"]
+                                logger.info(f"Received streamed data: {chunk!r}")
+
+                                # Append new text and update the placeholder in real-time
+                                agent_reply[0] += chunk
+                                response_placeholder.markdown(agent_reply[0])
+
+                                yield chunk  # Stream the text
                             else:
                                 logger.warning(f"Unexpected JSON structure: {json_data}")
                         except json.JSONDecodeError:
                             logger.error(f"Failed to parse JSON: {line}")
 
-            # Display streamed content in real time
-            agent_reply = st.write_stream(stream_generator())
+            # Start streaming response
+            for _ in stream_generator():
+                pass  # This forces execution of the generator
 
     except requests.exceptions.RequestException as e:
-        agent_reply = f"Error calling agent service: {e}"
+        agent_reply[0] = f"Error calling agent service: {e}"
         logger.error(f"Error occurred: {e}", exc_info=True)
         with st.chat_message("assistant", avatar=":material/robot_2:"):
-            st.markdown(agent_reply)
+            st.markdown(agent_reply[0])
 
-    # Store messages in session
+    # Store messages in session *only after full response is received*
     st.session_state["messages"].append({"role": "user", "content": user_input})
-    st.session_state["messages"].append({"role": "assistant", "content": agent_reply})
+    st.session_state["messages"].append({"role": "assistant", "content": agent_reply[0]})
