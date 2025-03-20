@@ -30,4 +30,4 @@ services:
     depends_on:
       - agent-service           
     environment:
-      - AGENT_SERVICE_URL=http://agent-service:8001/ask
+      - AGENT_SERVICE_URL=http://agent-service:8001

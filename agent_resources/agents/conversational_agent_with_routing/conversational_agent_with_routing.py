@@ -1,8 +1,10 @@
+# agent_resources/conversational_agent.py
+
 import logging
 from functools import partial
 from dotenv import load_dotenv
 from openai import OpenAI
-from typing import Dict
+from typing import Dict, Iterator, Tuple, Any
 from agent_resources.prompts import REACT_AGENT_SYSTEM_PROMPT
 from agent_resources.utils import ChatVLLMWrapper
 from langchain_openai import ChatOpenAI
@@ -19,9 +21,7 @@ from .nodes import (
 from langgraph.graph import MessagesState
 
 load_dotenv(override=True)
-
 logger = logging.getLogger(__name__)
-
 
 class ConversationalAgentWithRouting(Agent):
     def __init__(
@@ -31,63 +31,31 @@ class ConversationalAgentWithRouting(Agent):
         thread_id=None,
         use_openai: bool = False,
     ):
-        """
-        :param llm_configs: Dictionary describing how to build each LLM.
-                            Example:
-                            {
-                              "default_llm": {
-                                "api_key": "...",
-                                "base_url": "...",
-                                "model_id": "...",
-                                "max_new_tokens": 512,
-                                "temperature": 1.0,
-                                "top_p": 1.0,
-                                "repetition_penalty": 1.0
-                              },
-                              "alternate_llm": {
-                                "api_key": "...",
-                                "base_url": "...",
-                                "model_id": "...",
-                                "max_new_tokens": 512,
-                                "temperature": 1.0,
-                                "top_p": 1.0,
-                                "repetition_penalty": 1.0
-                              }
-                            }
-        :param memory: Checkpoint memory (optional).
-        :param thread_id: Unique identifier for sessions (optional).
-        :param use_openai: Whether to use ChatOpenAI (True) or ChatVLLMWrapper (False) for LLM.
-        """
         self.memory = memory if memory else MemorySaver()
         self.thread_id = thread_id if thread_id else "default"
         self.use_openai = use_openai
 
-        # Build the dictionary of LLMs (including default_llm and alternate_llm)
+        logger.info(f"Initializing ConversationalAgentWithRouting with use_openai={self.use_openai!r}")
         self.build_llm_dict(llm_configs)
-
-        # Build the state graph
         self.build_graph()
 
     def build_llm_dict(self, llm_configs: Dict) -> Dict[str, object]:
-        """
-        Dynamically uses either ChatVLLMWrapper or ChatOpenAI based on self.use_openai.
-        If use_openai=True, uses ChatOpenAI; otherwise, uses ChatVLLMWrapper.
-        """
         if llm_configs is None:
-            raise ValueError("llm_configs cannot be None. Please provide a valid configuration dictionary.")
+            raise ValueError("llm_configs cannot be None. Provide a valid configuration dictionary.")
 
         required_keys = ["default_llm", "alternate_llm"]
         for key in required_keys:
             if key not in llm_configs:
-                raise ValueError(f"Missing required LLM configuration: '{key}'. Please include it in your config.yaml.")
+                raise ValueError(f"Missing required LLM configuration: '{key}'.")
 
         self.llm_dict = {}
+        logger.info("Building LLM dictionary...")
 
         for name, config in llm_configs.items():
             if not config:
-                raise ValueError(f"Configuration for '{name}' is empty. Please provide a valid configuration.")
+                raise ValueError(f"Configuration for '{name}' is empty.")
 
-            model_id = config.get("model_id") or config.get("model")  # Ensure OpenAI model key works
+            model_id = config.get("model_id") or config.get("model")
             if model_id is None:
                 raise ValueError(f"Configuration for '{name}' must include 'model_id' or 'model'.")
 
@@ -97,21 +65,23 @@ class ConversationalAgentWithRouting(Agent):
             top_p = config.get("top_p", 1.0)
             repetition_penalty = config.get("repetition_penalty", 1.0)
 
+            logger.info(f"Config for {name}: model_id={model_id}, temperature={temperature}, streaming={self.use_openai}")
+
             if self.use_openai:
-                # OpenAI does NOT require a base_url
+                # ChatOpenAI with streaming
                 llm = ChatOpenAI(
                     model=model_id,
                     temperature=temperature,
-                    max_tokens=None,  # or a suitable integer if needed
+                    max_tokens=None,
                     timeout=None,
                     max_retries=2,
                     openai_api_key=openai_api_key,
+                    streaming=True,
                 )
             else:
-                # vLLM requires base_url
                 base_url = config.get("base_url")
                 if base_url is None:
-                    raise ValueError(f"Configuration for '{name}' must include 'base_url' when using vLLM.")
+                    raise ValueError(f"When using vLLM, 'base_url' is required for '{name}'.")
 
                 client = OpenAI(api_key=openai_api_key, base_url=base_url)
                 llm = ChatVLLMWrapper(
@@ -127,26 +97,16 @@ class ConversationalAgentWithRouting(Agent):
 
         return self.llm_dict
 
-
     def _build_system_prompt(self) -> str:
-        """
-        Build a ReAct system prompt that lists available tools.
-        """
         return REACT_AGENT_SYSTEM_PROMPT.format(tools_section="")
 
     def build_graph(self):
-        """
-        Creates the LangGraph state graph with routing logic.
-        Instead of using routing_node as the entry node, we use a simple pass-through node
-        and then add a conditional edge that calls routing_node.
-        """
+        logger.info("Building StateGraph with routing nodes.")
         state_graph = StateGraph(MessagesState)
 
-        # Create a pass-through node that just returns the state unchanged.
         state_graph.add_node("routing_pass", lambda state: state)
         state_graph.set_entry_point("routing_pass")
 
-        # Add conditional edges using routing_node to determine the next node.
         state_graph.add_conditional_edges(
             "routing_pass",
             routing_node,
@@ -156,71 +116,77 @@ class ConversationalAgentWithRouting(Agent):
             }
         )
 
-        # Add processing nodes.
         state_graph.add_node("default_llm_node", partial(default_llm_node, default_llm=self.llm_dict["default_llm"]))
         state_graph.add_node("alternate_llm_node", partial(alternate_llm_node, alternate_llm=self.llm_dict["alternate_llm"]))
 
-        # Set exit edges.
         state_graph.add_edge("default_llm_node", END)
         state_graph.add_edge("alternate_llm_node", END)
 
-        # Compile the graph with memory checkpointing.
         self.state_graph = state_graph.compile(checkpointer=self.memory)
 
     def run(self, message: HumanMessage):
+        logger.info(f"Running synchronous run(...) with message={message.content!r}")
         try:
-            config = {
-                "configurable": {
-                    "thread_id": self.thread_id,
-                }
-            }
-
-            # Invoke the graph, passing thread_id ensures memory persistence.
+            config = {"configurable": {"thread_id": self.thread_id}}
             response = self.state_graph.invoke({"messages": [message]}, config=config)
-
-            # Always pick the last message directly.
             ai_message = response["messages"][-1]
 
             if isinstance(ai_message, AIMessage):
-                # Optionally add metadata if desired
                 ai_message.additional_kwargs["model_used"] = ai_message.additional_kwargs.get("model_used", "unknown")
+                logger.info(f"Synchronous response: {ai_message.content!r}")
                 return ai_message
             else:
-                logger.error("Unexpected message type in response.")
-                raise ValueError("Expected AIMessage in the response.")
+                logger.error("Unexpected message type (not AIMessage).")
+                raise ValueError("Expected AIMessage in response.")
+        except Exception as e:
+            logger.exception("Error generating synchronous response:")
+            return AIMessage(content=f"Sorry, I encountered an error: {e}")
+
+    def run_stream(self, message: HumanMessage) -> Iterator[Tuple[str, Any]]:
+        """
+        Streaming run method. Instead of returning final output directly,
+        yields events from the graph execution. 
+        Each item is (stream_mode, data).
+        """
+        logger.info(f"Running streaming run(...) with message={message.content!r}")
+        try:
+            config = {"configurable": {"thread_id": self.thread_id}}
+            # We request "messages" and "updates"
+            stream_iterator = self.state_graph.stream(
+                {"messages": [message]},
+                config=config,
+                stream_mode=["messages", "updates"]
+            )
+            logger.info("Got stream_iterator from state_graph.stream(...)")
+
+            for stream_mode, data in stream_iterator:
+                logger.debug(f"run_stream => yield: ({stream_mode!r}, {data!r})")
+                yield (stream_mode, data)
 
         except Exception as e:
-            logger.error("Error generating response", exc_info=True)
-            return AIMessage(content=f"Sorry, I encountered an error: {e}")
+            logger.exception("Error generating streaming response:")
+            yield ("error", f"Error: {e}")
+
+    def _extract_response_metadata(self, response: dict, input_message: HumanMessage) -> AIMessage:
+        ...
+        # (left unchanged)
 
 
     def _extract_response_metadata(self, response: dict, input_message: HumanMessage) -> AIMessage:
         """
         Extracts the final AI message and relevant metadata (e.g., tools used, model used)
         from the state graph response.
-
-        :param response: The dictionary returned from state_graph.invoke.
-        :param input_message: The original HumanMessage input.
-        :return: An AIMessage with the metadata attached.
         """
         all_msgs = response.get("messages", [])
-
-        # Locate the index of the incoming HumanMessage.
         idx = next((i for i, m in enumerate(all_msgs) if m == input_message), None)
         if idx is None:
             return AIMessage(content="No matching user message found.")
 
-        # Get all newly generated messages after the user's input.
         new_msgs = all_msgs[idx + 1:]
         used_tools = {m.name for m in new_msgs if getattr(m, "role", "") == "tool"}
-
-        # The final AI message is typically the last one.
         final_ai_msg = new_msgs[-1] if new_msgs else AIMessage(content="No AI response.")
-
-        # Extract the model used from the final AI message (set in nodes.py).
         node_model_used = getattr(final_ai_msg, "additional_kwargs", {}).get("model_used", "unknown")
 
-        # Attach the metadata for frontend display.
         final_ai_msg.additional_kwargs["tools_used"] = list(used_tools)
         final_ai_msg.additional_kwargs["model_used"] = node_model_used
 

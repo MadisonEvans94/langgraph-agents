@@ -8,7 +8,7 @@ WORKDIR /app
 COPY . .
 
 # Install Streamlit only (no need for full requirements.txt)
-RUN pip install --no-cache-dir streamlit python-dotenv openai st_tailwind
+RUN pip install streamlit python-dotenv openai st_tailwind
 
 # Expose Streamlit's default port
 EXPOSE 8501

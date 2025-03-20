@@ -1,137 +1,89 @@
+import json
 import streamlit as st
 import requests
 import os
-from dotenv import load_dotenv
 import logging
+from dotenv import load_dotenv
 import st_tailwind as tw
 
-# 1) Load environment variables
+# Configure logging for Streamlit
+logging.basicConfig(level=logging.DEBUG, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger(__name__)
+
+# Load environment variables
 load_dotenv()
 AGENT_SERVICE_URL = os.getenv("AGENT_SERVICE_URL", "")
-logging.info(f'AGENT_SERVICE_URL: {AGENT_SERVICE_URL}')
+logger.info(f"AGENT_SERVICE_URL: {AGENT_SERVICE_URL}")
 
-# 2) Configure Streamlit's page (title, layout, etc.)
-#    NOTE: The actual dark theme comes from config.toml.
+# Configure Streamlit page
 st.set_page_config(page_title="Agentic Demo", layout="wide")
-
-# 3) Initialize Tailwind CSS (so we can use tw.write() with Tailwind classes)
 tw.initialize_tailwind()
 
-# 4) Optional: Inject some extra CSS to fine-tune backgrounds.
-#    For example, to darken the chat input field further:
-st.markdown("""
-<style>
-/* Make the overall app background a bit more uniform */
-.stApp {
-    background-color: #1F2937 !important; 
-    color: #f9fafb !important;
-}
-
-/* Make the sidebar a slightly different darker color */
-[data-testid="stSidebar"] {
-    background-color: #111827 !important;
-    color: #f9fafb !important;
-}
-
-/* Style the chat input box (role="textbox") */
-div[role="textbox"] {
-    background-color: #2B2B2B !important;
-    color: #ffffff !important;
-}
-
-/* If you want to tweak the color of the chat bubbles themselves, 
-   you can target them with something like:
-   .stMarkdown { background-color: #2a2a2a !important; } 
-   but be sure to refine selectors carefully to avoid collisions.
-*/
-</style>
-""", unsafe_allow_html=True)
-
-# 5) Sidebar with application information
+# Sidebar Info
 with st.sidebar:
-    tw.write(
-        """
-        This is a **context based LLM routing** application built with Streamlit and Tailwind CSS.
+    tw.write("""🚀 **Context-based AI Chatbot**
+    - Streams responses in real time.
+    - Routes queries to different LLMs.
+    - Displays model and tools used.
+    """, classes="text-sm text-gray-300")
 
-        💡 **Features**:
-        - Conversational AI with routing
-        - Dark-themed modern UI
-        - Displays model and tools used
-
-        🚀 **How to use**:
-        1. Type a question in the input box.
-        2. The chatbot will respond using an LLM backend.
-        3. See details like model and tools used in the response.
-        """,
-        classes="text-sm text-gray-300"
-    )
-
-# 6) Title using Tailwind-wrapped component
 tw.write("🧠 Agentic Demo", classes="text-4xl font-bold text-center text-teal-400 my-6")
 
-# Default agent type
-selected_agent_type = "conversational_agent_with_routing"
-
-# Keep conversation in session
+# Keep conversation history
 if "messages" not in st.session_state:
     st.session_state["messages"] = []
 
-# 7) Display existing messages
+# Display chat history
 for msg in st.session_state["messages"]:
     avatar_icon = ":material/person:" if msg["role"] == "user" else ":material/robot_2:"
-    
-    with st.chat_message(msg["role"], avatar=avatar_icon):  # Use custom icons
+    with st.chat_message(msg["role"], avatar=avatar_icon):
         st.markdown(msg["content"])
-        if msg["role"] == "assistant":
-            if "metadata" in msg:
-                if model_used := msg["metadata"].get("model_used"):
-                    tw.write(f"✨ Model: {model_used}", classes="text-sm text-gray-300")
-                if tools_used := msg["metadata"].get("tools_used"):
-                    tw.write(f"🔧 Tools: {', '.join(tools_used)}", classes="text-sm text-gray-300")
 
-# 8) Chat input
+# Chat input
 user_input = st.chat_input("Ask your question...")
 if user_input:
-    # Display user message with custom avatar
+    logger.info(f"User input received: {user_input!r}")
+
     with st.chat_message("user", avatar=":material/person:"):
         st.markdown(user_input)
 
-    payload = {
-        "agent_type": selected_agent_type,
-        "user_query": user_input
-    }
+    payload = {"agent_type": "conversational_agent_with_routing", "user_query": user_input}
+    logger.info(f"Sending API request to {AGENT_SERVICE_URL}/ask_stream with payload: {payload}")
 
     try:
-        response = requests.post(AGENT_SERVICE_URL, json=payload, timeout=30)
+        response = requests.post(f"{AGENT_SERVICE_URL}/ask_stream", json=payload, timeout=30, stream=True)
         response.raise_for_status()
-        data = response.json()
-        agent_reply = data.get("response", "")
-        model_used = data.get("model_used", "")
-        tools_used = data.get("tools_used", [])
-    except Exception as e:
+        logger.info("Received successful response from /ask_stream")
+
+        # Streaming response processing
+        agent_reply = ""
+        with st.chat_message("assistant", avatar=":material/robot_2:"):
+            response_placeholder = st.empty()  # Placeholder for updating text
+
+            def stream_generator():
+                """Yields streaming tokens as they arrive."""
+                for line in response.iter_lines():
+                    if line:
+                        logger.debug(f"Raw streamed line: {line}")
+                        try:
+                            json_data = json.loads(line)
+                            if "data" in json_data and isinstance(json_data["data"], str):
+                                logger.info(f"Received streamed data: {json_data['data']!r}")
+                                yield json_data["data"]  # Stream only the content text
+                            else:
+                                logger.warning(f"Unexpected JSON structure: {json_data}")
+                        except json.JSONDecodeError:
+                            logger.error(f"Failed to parse JSON: {line}")
+
+            # Display streamed content in real time
+            agent_reply = st.write_stream(stream_generator())
+
+    except requests.exceptions.RequestException as e:
         agent_reply = f"Error calling agent service: {e}"
-        model_used = ""
-        tools_used = []
+        logger.error(f"Error occurred: {e}", exc_info=True)
+        with st.chat_message("assistant", avatar=":material/robot_2:"):
+            st.markdown(agent_reply)
 
-    # Display assistant response with custom avatar
-    with st.chat_message("assistant", avatar=":material/robot_2:"):
-        st.markdown(agent_reply)
-        if model_used:
-            tw.write(f"✨ Model: {model_used}", classes="text-sm text-gray-300")
-        if tools_used:
-            tw.write(f"🔧 Tools: {', '.join(tools_used)}", classes="text-sm text-gray-300")
-
-    # Store messages in session state
-    st.session_state["messages"].append({
-        "role": "user",
-        "content": user_input,
-        "metadata": {}
-    })
-    st.session_state["messages"].append({
-        "role": "assistant",
-        "content": agent_reply,
-        "metadata": {
-            "model_used": model_used,
-            "tools_used": tools_used
-        }
-    })
+    # Store messages in session
+    st.session_state["messages"].append({"role": "user", "content": user_input})
+    st.session_state["messages"].append({"role": "assistant", "content": agent_reply})
