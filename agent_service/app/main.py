@@ -1,9 +1,8 @@
-import logging
-import time
-import uuid
-import os
-import sys
 import json
+import logging
+import sys
+import os
+import uuid
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
@@ -11,34 +10,21 @@ from dotenv import load_dotenv
 from langchain_core.messages import HumanMessage, AIMessage, AIMessageChunk
 from langgraph.checkpoint.memory import MemorySaver
 from agent_resources.agent_factory import AgentFactory
-from .models import QueryRequest, QueryResponse
+from .models import QueryRequest
 from .utils import load_llm_configs
 
-load_dotenv()
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-# Decide if we're using OpenAI or vLLM
-USE_OPENAI = True
+load_dotenv()
 
-# Load entire config
+USE_OPENAI = True  # or decide if you want vLLM
+
+# Load from your config.yaml
 all_configs = load_llm_configs()
+llm_configs = all_configs["openai"] if USE_OPENAI else all_configs["vllm"]
 
-# Extract ONLY "default_llm" and "alternate_llm" from the correct provider
-llm_configs = all_configs.get("openai", {}) if USE_OPENAI else all_configs.get("vllm", {})
-
-logger.info("Extracted LLM configs for agent:")
-logger.info(json.dumps(llm_configs, indent=2))
-
-repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if repo_root not in sys.path:
-    sys.path.insert(0, repo_root)
-
-app = FastAPI(
-    title="Conversational Agent API",
-    description="An API for conversation agents powered by LangGraph, etc.",
-    version="1.0.0",
-)
+app = FastAPI(title="Conversational Agent API", version="1.0.0")
 
 shared_memory = MemorySaver()
 agent_factory = AgentFactory(memory=shared_memory, thread_id=str(uuid.uuid4()))
@@ -50,50 +36,57 @@ agent = agent_factory.factory(
 )
 
 @app.post("/ask_stream")
-async def ask_question_stream(request: QueryRequest):
+async def ask_stream(request: QueryRequest):
     user_query = request.user_query
-    logger.info(f"/ask_stream endpoint called with user_query={user_query!r}")
+    logger.info(f"ask_stream received query: {user_query!r}")
 
-    human_message = HumanMessage(content=user_query)
+    human_msg = HumanMessage(content=user_query)
     try:
-        stream_iterator = agent.run_stream(human_message)
-        logger.info("Initialized streaming generator from agent.run_stream(...)")
+        # agent.run_stream(...) returns an iterator of (stream_mode, data)
+        stream_iter = agent.run_stream(human_msg)
+        logger.info("Got streaming iterator from agent.")
     except Exception as e:
-        logger.error("Error initializing streaming response", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error processing the query: {e}")
+        logger.error("Error creating stream", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
     def event_generator():
-        for stream_mode, data in stream_iterator:
-            logger.info(f"ask_stream generator: stream_mode={stream_mode!r}, data={data!r}")
+        """
+        Yields SSE-like lines of JSON:
+          - {"mode": "messages", "data": "... partial text ..."}
+          - {"mode": "model_used", "data": "...model name..."}
+        """
+        for stream_mode, data in stream_iter:
+            # data should be (chunk_obj, metadata_dict)
+            if not (isinstance(data, tuple) and len(data) == 2):
+                continue
 
-            # Typically data = (message_obj, metadata_dict)
-            if isinstance(data, tuple) and len(data) == 2:
-                chunk_obj, metadata = data
+            chunk_obj, metadata = data
 
-                # 1) Skip user messages
-                if isinstance(chunk_obj, HumanMessage):
-                    continue
+            # Skip user messages
+            if isinstance(chunk_obj, HumanMessage):
+                continue
 
-                # 2) Stream partial AI chunks
-                if isinstance(chunk_obj, AIMessageChunk):
-                    chunk_text = chunk_obj.content
-                    logger.info(f"   => Streaming partial chunk: {chunk_text!r}")
-                    yield json.dumps({"mode": stream_mode, "data": chunk_text}) + "\n"
-                    continue
+            # Stream partial tokens
+            if isinstance(chunk_obj, AIMessageChunk):
+                partial_text = chunk_obj.content
+                yield json.dumps({"mode": "messages", "data": partial_text}) + "\n"
+                continue
 
-                # 3) Skip the final full AIMessage to avoid duplication
-                if isinstance(chunk_obj, AIMessage):
-                    logger.info("Skipping final AIMessage to avoid duplicated text.")
-                    continue
+            # Final AIMessage => we do NOT repeat its text
+            if isinstance(chunk_obj, AIMessage):
+                # Instead, we just yield the model name
+                final_model = chunk_obj.additional_kwargs.get("model_used", "unknown")
+                yield json.dumps({"mode": "model_used", "data": final_model}) + "\n"
+                break  # We are done streaming
 
-        logger.info("Streaming completed.")
+        logger.info("Finished streaming tokens.")
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 @app.get("/health")
-def health_check():
-    return {"status": "ok", "message": "API is running."}
+def health():
+    return {"status": "ok"}
 
 if __name__ == "__main__":
     import uvicorn
