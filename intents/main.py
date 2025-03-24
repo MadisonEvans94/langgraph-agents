@@ -1,10 +1,9 @@
 import logging
-import pickle
-import numpy as np
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from tensorflow.keras.models import load_model
-from tensorflow.keras.preprocessing.sequence import pad_sequences
+import torch
+from transformers import AutoTokenizer, AutoModel, AutoConfig
+from classifier import CustomModel
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -24,39 +23,42 @@ class QueryResponse(BaseModel):
 
 # Load model files on startup
 try:
-    with open("model_files/rephrased_tokenizer.pkl", "rb") as handle:
-        tokenizer = pickle.load(handle)
+    tokenizer = AutoTokenizer.from_pretrained("nvidia/prompt-task-and-complexity-classifier")
     logging.info("Tokenizer loaded successfully.")
-
-    with open("model_files/rephrased_label_encoder.pkl", "rb") as handle:
-        label_encoder = pickle.load(handle)
-    logging.info("Label encoder loaded successfully.")
-
-    with open("model_files/rephrased_classes.pkl", "rb") as handle:
-        classes = pickle.load(handle)
-    logging.info(f"Classes loaded successfully: {classes}")
-
-    model = load_model("model_files/rephrased_intents.h5")
+    config = AutoConfig.from_pretrained("nvidia/prompt-task-and-complexity-classifier")
+    logging.info("Config loaded successfully.")
+    model = CustomModel(
+        target_sizes=config.target_sizes,
+        task_type_map=config.task_type_map,
+        weights_map=config.weights_map,
+        divisor_map=config.divisor_map,
+    )
+    model.load_state_dict(torch.load("model_files/trained_model.pth", map_location=torch.device("cpu")))
+    model.eval()
     logging.info("Model loaded successfully.")
 except Exception as e:
     logging.error("Error loading model files: %s", e)
     raise e
 
 def predict_intent(text: str) -> str:
-    """Preprocess the input text, run prediction, and decode the predicted intent."""
+    """Preprocess the input text, run prediction, and decide route label based on complexity"""
     # Tokenize and pad input text
-    seq = tokenizer.texts_to_sequences([text])
-    padded = pad_sequences(seq, maxlen=20)  # Adjust maxlen as per your training settings
-    logging.info(f"Tokenized input: {seq}")
-    logging.info(f"Padded input: {padded}")
-
+    encoded_text = tokenizer(text, 
+                            return_tensors="pt",
+                            add_special_tokens=True,
+                            max_length=512,
+                            padding="max_length",
+                            truncation=True,
+                            )
+    logging.info(f"Tokenized input: {encoded_text}")
+    
     # Predict using the model
-    pred = model.predict(padded)
+    pred = model(encoded_text)
     logging.info(f"Raw model output: {pred}")
-
-    # Get index of highest probability and decode the intent
-    intent_idx = np.argmax(pred)
-    intent_label = label_encoder.inverse_transform([intent_idx])[0]
+    if pred['prompt_complexity_score'][0] > 0.25:
+        intent_label = "complex"
+    else:
+        intent_label = "simple"
     logging.info(f"Predicted intent: {intent_label}")
 
     return intent_label

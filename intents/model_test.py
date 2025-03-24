@@ -1,35 +1,43 @@
-import pickle
-import numpy as np
-from tensorflow.keras.models import load_model
-from tensorflow.keras.preprocessing.sequence import pad_sequences
+import torch
+from transformers import AutoTokenizer, AutoModel, AutoConfig
+from classifier import CustomModel
 
 # Load tokenizer
-with open("model_files/rephrased_tokenizer.pkl", "rb") as handle:
-    tokenizer = pickle.load(handle)
+tokenizer = AutoTokenizer.from_pretrained("nvidia/prompt-task-and-complexity-classifier")
 
-# Load label encoder
-with open("model_files/rephrased_label_encoder.pkl", "rb") as handle:
-    label_encoder = pickle.load(handle)
-
-# Load class names
-with open("model_files/rephrased_classes.pkl", "rb") as handle:
-    classes = pickle.load(handle)
+# Load model config
+config = AutoConfig.from_pretrained("nvidia/prompt-task-and-complexity-classifier")
 
 # Load trained model
-model = load_model("model_files/rephrased_intents.h5")  # Ensure correct path
+model = CustomModel(
+    target_sizes=config.target_sizes,
+    task_type_map=config.task_type_map,
+    weights_map=config.weights_map,
+    divisor_map=config.divisor_map,
+)
+
+# Load model weights
+model.load_state_dict(torch.load("model_files/trained_model.pth", map_location=torch.device("cpu")))
+model.eval()
 
 def predict_intent(text):
     """Preprocesses input text, runs model prediction, and returns the predicted intent."""
     # Tokenize and pad input text
-    seq = tokenizer.texts_to_sequences([text])
-    padded = pad_sequences(seq, maxlen=20)  # Adjust maxlen based on training
-
+    encoded_text = tokenizer(
+        text,
+        return_tensors="pt",
+        add_special_tokens=True,
+        max_length=512,
+        padding="max_length",
+        truncation=True,
+    )
+    
     # Predict using the trained model
-    pred = model.predict(padded)
-    intent_idx = np.argmax(pred)  # Get highest confidence index
-
-    # Decode intent
-    intent_label = label_encoder.inverse_transform([intent_idx])[0]
+    result = model(encoded_text)
+    if result['prompt_complexity_score'][0] > 0.25:
+        intent_label = "complex"
+    else:
+        intent_label = "simple"
     return intent_label
 
 def main():

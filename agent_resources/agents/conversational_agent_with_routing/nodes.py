@@ -52,7 +52,7 @@ def call_classifier(query: str) -> str:
 def routing_node(state: MessagesState) -> str:
     """
     Determines the next node by using the classifier's intent.
-    Routes to 'alternate_llm_node' if intent is 'relevant'; otherwise, routes to 'default_llm_node'.
+    Routes to 'alternate_llm_node' if intent is 'complex'; otherwise, routes to 'default_llm_node'.
     """
     messages = state.get("messages", [])
     query = messages[-1].content if messages else "default query"
@@ -60,7 +60,7 @@ def routing_node(state: MessagesState) -> str:
     
     try:
         intent = call_classifier(query)
-        if intent.lower() == "relevant":
+        if intent.lower() == "complex":
             logging.info("Routing to alternate_llm_node")
             return "alternate_llm_node"
         else:

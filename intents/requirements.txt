@@ -1,6 +1,8 @@
 fastapi
 uvicorn
-tensorflow
+torch
 numpy
 pydantic
 scikit-learn
+huggingface_hub
+transformers
