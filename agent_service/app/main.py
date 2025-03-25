@@ -18,7 +18,7 @@ logging.basicConfig(level=logging.INFO)
 
 load_dotenv()
 
-USE_OPENAI = True  # or decide if you want vLLM
+USE_OPENAI = False
 
 # Load from your config.yaml
 all_configs = load_llm_configs()

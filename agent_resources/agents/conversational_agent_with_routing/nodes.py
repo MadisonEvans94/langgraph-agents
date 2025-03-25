@@ -35,8 +35,8 @@ def call_classifier(query: str) -> str:
     """
     # Point to 'agent-stack-classifier' instead of 'classifier'
     # so it matches your K8s Service name and local Docker Compose container name
-    # classifier_url = "http://agent-stack-classifier:8000/classify"
-    classifier_url = "http://classifier:8000/classify"
+    classifier_url = "http://agent-stack-classifier:8000/classify"
+    # classifier_url = "http://classifier:8000/classify"
 
     logging.info("Calling classifier with query: %s", query)
     response = requests.post(classifier_url, json={"query": query}, timeout=5)

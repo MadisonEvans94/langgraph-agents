@@ -1,5 +1,7 @@
 import logging
-from langchain_core.messages import BaseMessage, AIMessage
+from typing import Iterator, Union
+
+from langchain_core.messages import BaseMessage, AIMessage, AIMessageChunk
 from langchain_core.messages.utils import convert_to_openai_messages
 from pydantic import BaseModel
 
@@ -9,8 +11,10 @@ logging.basicConfig(level=logging.INFO)
 class ChatVLLMWrapper:
     """
     Wraps a chat completion endpoint using OpenAI/vLLM.
-    Accepts a list of BaseMessage objects and returns an AIMessage.
-    Supports tool binding via the bind_tools() method.
+
+    - If `streaming=False`, invoke() returns a single AIMessage with the final text.
+    - If `streaming=True`, invoke() returns an iterator that yields AIMessageChunk objects 
+      as partial tokens arrive.
     """
 
     def __init__(
@@ -21,6 +25,7 @@ class ChatVLLMWrapper:
         temperature: float,
         top_p: float,
         repetition_penalty: float,
+        streaming: bool = False,
     ):
         self.client = client
         self.model = model
@@ -28,24 +33,15 @@ class ChatVLLMWrapper:
         self.temperature = temperature
         self.top_p = top_p
         self.repetition_penalty = repetition_penalty
-        
-        # No tools bound by default.
+        self.streaming = streaming
         self.bound_tools = None
 
         logger.info(
-            f"ChatVLLMWrapper initialized with model: {self.model}, "
-            f"max_new_tokens: {self.max_new_tokens}, temperature: {self.temperature}, "
-            f"top_p: {self.top_p}, repetition_penalty: {self.repetition_penalty}"
+            f"🚀 ChatVLLMWrapper initialized | model={model}, streaming={streaming}, "
+            f"max_new_tokens={max_new_tokens}, temp={temperature}, top_p={top_p}, rep_penalty={repetition_penalty}"
         )
 
     def bind_tools(self, tools: list) -> "ChatVLLMWrapper":
-        """
-        Bind a list of tools to the model.
-        Each tool should have a 'name' and a 'description' attribute
-        (or a default fallback). Tools can also optionally define
-        a Pydantic 'args_schema' for function calling.
-        Returns a new ChatVLLMWrapper instance with the tools bound.
-        """
         new_instance = ChatVLLMWrapper(
             client=self.client,
             model=self.model,
@@ -53,72 +49,101 @@ class ChatVLLMWrapper:
             temperature=self.temperature,
             top_p=self.top_p,
             repetition_penalty=self.repetition_penalty,
+            streaming=self.streaming,  # carry over the streaming flag
         )
         new_instance.bound_tools = tools
-        logger.info(f"Bound {len(tools)} tools to the model.")
+        logger.info(f"🔧 Bound {len(tools)} tools to the model.")
         return new_instance
 
-    def invoke(self, messages: list[BaseMessage]) -> AIMessage:
+    def invoke(
+        self, messages: list[BaseMessage]
+    ) -> Union[AIMessage, Iterator[AIMessageChunk]]:
         """
-        Accepts a list of messages, calls the chat completion endpoint,
-        and returns an AIMessage containing the new assistant message.
+        If streaming=False:
+            returns a single final AIMessage (the entire response).
+        If streaming=True:
+            returns a generator that yields AIMessageChunk objects 
+            (the partial tokens) as they arrive.
+        """
+        openai_messages = convert_to_openai_messages(messages)
+        params = {
+            "model": self.model,
+            "messages": openai_messages,
+            "max_tokens": self.max_new_tokens,
+            "temperature": self.temperature,
+            "top_p": self.top_p,
+            "stream": self.streaming,  # enables streaming mode if True
+        }
 
-        If tools are bound, includes their schemas under the 'functions' parameter
-        in the OpenAI "function calling" format. 
+        if self.bound_tools:
+            params["functions"] = self._convert_tools_to_functions()
+
+        if not self.streaming:
+            logger.info(f"🟢 [ChatVLLMWrapper] Invoking (non-stream) with parameters: {params}")
+            try:
+                response = self.client.chat.completions.create(**params)
+                logger.info(f"✅ Received non-stream response: {response}")
+                content = response.choices[0].message.content
+                logger.info(f"✅ Extracted content (first 50 chars): {content[:50]!r}")
+                return AIMessage(content=content.strip() if content else "")
+            except Exception as e:
+                logger.error(f"❌ Error during non-stream invocation: {e}", exc_info=True)
+                raise
+        else:
+            logger.info(f"🟡 [ChatVLLMWrapper] Invoking (stream) with parameters: {params}")
+            return self._stream_generator(params)
+
+    def _stream_generator(
+        self, params: dict
+    ) -> Iterator[AIMessageChunk]:
+        """
+        Internal helper: calls the vLLM-like endpoint with streaming,
+        then yields `AIMessageChunk(content=...)` for each partial token received.
         """
         try:
-            openai_messages = convert_to_openai_messages(messages)
-            
-            params = {
-                "model": self.model,
-                "messages": openai_messages,
-                "max_tokens": self.max_new_tokens,
-                "temperature": self.temperature,
-                "top_p": self.top_p,
-            }
-            
-            # If tools have been bound, convert each tool to a JSON-serializable "function".
-            # This is optional, but demonstrates how to do "function calling" style usage.
-            if self.bound_tools:
-                functions = []
-                for tool in self.bound_tools:
-                    # 1) Start with name + description
-                    func_def = {
-                        "name": tool.name,
-                        "description": getattr(tool, "description", "No description provided"),
-                        # Default minimal "parameters" block
-                        "parameters": {
-                            "type": "object",
-                            "properties": {},
-                        },
-                    }
-                    
-                    # 2) If the tool defines a Pydantic args_schema, build a real schema
-                    #    so the model can do function calling properly.
-                    if hasattr(tool, "args_schema") and isinstance(tool.args_schema, type) \
-                       and issubclass(tool.args_schema, BaseModel):
-                        pydantic_schema = tool.args_schema.model_json_schema()
-                        # Make sure top-level says "type": "object"
-                        pydantic_schema["type"] = "object"
-                        func_def["parameters"] = pydantic_schema
+            logger.info("🔄 Starting streaming call to vLLM endpoint...")
+            stream_resp = self.client.chat.completions.create(**params)
+            logger.info("🔄 Streaming response object received.")
 
-                    # Append this JSON-safe function definition
-                    functions.append(func_def)
+            for i, chunk in enumerate(stream_resp):
+                logger.debug(f"Chunk {i}: {chunk}")
+                if not chunk.choices:
+                    logger.warning(f"Chunk {i} has no choices; skipping.")
+                    continue
 
-                # Attach them to the params
-                params["functions"] = functions
+                choice = chunk.choices[0]
+                delta_obj = choice.get("delta", {})
 
-            logger.info(f"Invoking vLLM with parameters: {params}")
+                if "content" in delta_obj:
+                    partial_text = delta_obj["content"]
+                    logger.info(f"📌 Received streaming chunk {i}: {partial_text!r}")
+                    yield AIMessageChunk(content=partial_text)
 
-            # Make the request to your vLLM/OpenAI-compatible endpoint
-            response = self.client.chat.completions.create(**params)
-            logger.info(f"Received response from vLLM: {response}")
-
-            # Extract assistant content
-            content = response.choices[0].message.content.strip()
-            
-            return AIMessage(content=content)
+                finish_reason = choice.get("finish_reason", None)
+                if finish_reason in ("stop", "finished"):
+                    logger.info(f"✅ Finish reason received in chunk {i}: {finish_reason}. Ending stream.")
+                    break
 
         except Exception as e:
-            logger.error(f"Error invoking vLLM client: {e}", exc_info=True)
-            raise RuntimeError(f"vLLM invocation failed: {e}")
+            logger.error(f"❌ Error during streaming: {e}", exc_info=True)
+            raise
+
+    def _convert_tools_to_functions(self):
+        """
+        Utility to convert bound_tools -> JSON for function calling
+        (if you are implementing the new function calling style).
+        """
+        functions = []
+        for tool in self.bound_tools or []:
+            func_def = {
+                "name": tool.name,
+                "description": getattr(tool, "description", ""),
+                "parameters": {"type": "object", "properties": {}},
+            }
+            if hasattr(tool, "args_schema") and issubclass(tool.args_schema, BaseModel):
+                schema = tool.args_schema.model_json_schema()
+                schema["type"] = "object"
+                func_def["parameters"] = schema
+            functions.append(func_def)
+        logger.info(f"Converted {len(functions)} tools to function definitions.")
+        return functions

@@ -49,7 +49,7 @@ class ConversationalAgentWithRouting(Agent):
                 raise ValueError(f"Missing required LLM configuration: '{key}'.")
 
         self.llm_dict = {}
-        logger.info("Building LLM dictionary...")
+        logger.info("🛠️ Building LLM dictionary...")
 
         for name, config in llm_configs.items():
             if not config:
@@ -61,41 +61,46 @@ class ConversationalAgentWithRouting(Agent):
 
             temperature = config.get("temperature", 0.7)
             openai_api_key = config.get("api_key", "")
+            base_url = config.get("base_url")
             max_new_tokens = config.get("max_new_tokens", 512)
-            top_p = config.get("top_p", 1.0)
-            repetition_penalty = config.get("repetition_penalty", 1.0)
 
-            logger.info(f"Config for {name}: model_id={model_id}, temperature={temperature}, streaming={self.use_openai}")
+            logger.info(f"🔹 Config for {name}: model={model_id}, temp={temperature}, streaming=True")
 
             if self.use_openai:
-                # ChatOpenAI with streaming
+                # Standard OpenAI usage
                 llm = ChatOpenAI(
                     model=model_id,
                     temperature=temperature,
-                    max_tokens=None,
+                    # Use None for max_tokens if you prefer controlling it by the request
+                    max_tokens=max_new_tokens,
                     timeout=None,
                     max_retries=2,
                     openai_api_key=openai_api_key,
-                    streaming=True,
+                    streaming=True,  # streaming from actual OpenAI
                 )
             else:
-                base_url = config.get("base_url")
+                # For vLLM: just treat it like an OpenAI drop-in by specifying base_url
                 if base_url is None:
                     raise ValueError(f"When using vLLM, 'base_url' is required for '{name}'.")
 
-                client = OpenAI(api_key=openai_api_key, base_url=base_url)
-                llm = ChatVLLMWrapper(
-                    client=client,
+                # We can pass a dummy key if your vLLM doesn’t require authentication
+                # but the library still expects an openai_api_key param.
+                llm = ChatOpenAI(
                     model=model_id,
-                    max_new_tokens=max_new_tokens,
                     temperature=temperature,
-                    top_p=top_p,
-                    repetition_penalty=repetition_penalty,
+                    max_tokens=max_new_tokens,
+                    timeout=None,
+                    max_retries=2,
+                    openai_api_key=openai_api_key or "EMPTY",
+                    openai_api_base=base_url,  # <-- point to vLLM endpoint
+                    streaming=True,            # streaming from vLLM
                 )
 
             self.llm_dict[name] = llm
+            logger.info(f"✅ Successfully created LLM instance for {name}")
 
         return self.llm_dict
+
 
     def _build_system_prompt(self) -> str:
         return REACT_AGENT_SYSTEM_PROMPT.format(tools_section="")

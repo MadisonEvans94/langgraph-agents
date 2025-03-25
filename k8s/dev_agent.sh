@@ -15,8 +15,8 @@ _deploy_name=as
 _uninstall=false
 _test=false
 _image_repo=sapdai/refd
-_agent_image_tag=agent-service-v3-rrin
-#_agent_image_tag=agent-service-v3
+# _agent_image_tag=agent-service-v3-rrin
+_agent_image_tag=agent-service-v3
 _agent_image_full_name=$_image_repo:$_agent_image_tag
 DEPLOY_NS=ogpt
 
