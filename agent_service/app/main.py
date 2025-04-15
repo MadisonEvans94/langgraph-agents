@@ -18,8 +18,7 @@ logging.basicConfig(level=logging.INFO)
 
 load_dotenv()
 
-USE_OPENAI = False
-
+USE_OPENAI = True
 # Load from your config.yaml
 all_configs = load_llm_configs()
 llm_configs = all_configs["openai"] if USE_OPENAI else all_configs["vllm"]
@@ -30,7 +29,7 @@ shared_memory = MemorySaver()
 agent_factory = AgentFactory(memory=shared_memory, thread_id=str(uuid.uuid4()))
 
 agent = agent_factory.factory(
-    agent_type="conversational_agent_with_routing",
+    agent_type="mcp_agent",
     llm_configs=llm_configs,
     use_openai=USE_OPENAI,
 )

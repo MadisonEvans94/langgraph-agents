@@ -1,0 +1,148 @@
+import logging
+from typing import Dict
+from langchain_core.messages import BaseMessage, AIMessage
+from agent_resources.base_agent import Agent
+from agent_resources.prompts import REACT_AGENT_SYSTEM_PROMPT
+from agent_resources.tools.tool_registry import ToolRegistry
+from langgraph.prebuilt import create_react_agent
+from langchain_openai import ChatOpenAI
+
+logger = logging.getLogger(__name__)
+
+# Retrieve the desired tools (for example, "tavily_search")
+tools = ToolRegistry.get_tools(['tavily_search'])
+
+class MCPAgent(Agent):
+    def __init__(
+        self,
+        llm_configs: Dict = None,
+        memory=None,
+        thread_id=None,
+        tools=tools,
+        **kwargs
+    ):
+        """
+        Initializes an MCPAgent by loading LLM configurations, tools, and building a reactive graph.
+        """
+        self.use_openai = kwargs.get("use_openai", False)
+        self.tools = tools if tools else []
+        self.build_llm_dict(llm_configs)
+        self.memory = memory
+        self.thread_id = thread_id if thread_id else 'default'
+        self.state_graph = self.build_graph()
+
+    def build_graph(self):
+        """
+        Construct the agent's state graph using a dynamic system prompt.
+        This uses langgraph.prebuilt.create_react_agent.
+        """
+        try:
+            system_prompt = self._build_system_prompt()
+            state_graph = create_react_agent(
+                self.llm_dict['default_llm'],
+                tools=self.tools,
+                checkpointer=self.memory,
+                state_modifier=system_prompt,  
+            )
+            return state_graph
+        except ValueError as ve:
+            logger.error(f"Validation error during agent compilation: {ve}")
+            raise
+        except Exception as e:
+            logger.error("Unexpected error during agent compilation", exc_info=True)
+            raise
+
+    def build_llm_dict(self, llm_configs: Dict) -> Dict[str, object]:
+        if llm_configs is None:
+            raise ValueError("llm_configs cannot be None. Provide a valid configuration dictionary.")
+        required_keys = ["default_llm", "alternate_llm"]
+        for key in required_keys:
+            if key not in llm_configs:
+                raise ValueError(f"Missing required LLM configuration: '{key}'.")
+        self.llm_dict = {}
+        logger.info("🛠️ Building LLM dictionary...")
+        for name, config in llm_configs.items():
+            if not config:
+                raise ValueError(f"Configuration for '{name}' is empty.")
+            model_id = config.get("model_id") or config.get("model")
+            if model_id is None:
+                raise ValueError(f"Configuration for '{name}' must include 'model_id' or 'model'.")
+            temperature = config.get("temperature", 0.7)
+            openai_api_key = config.get("api_key", "")
+            base_url = config.get("base_url")
+            max_new_tokens = config.get("max_new_tokens", 512)
+            logger.info(f"🔹 Config for {name}: model={model_id}, temp={temperature}, streaming=True")
+            if self.use_openai:
+                llm = ChatOpenAI(
+                    model=model_id,
+                    temperature=temperature,
+                    max_tokens=max_new_tokens,
+                    timeout=None,
+                    max_retries=2,
+                    openai_api_key=openai_api_key,
+                    streaming=True,
+                )
+            else:
+                if base_url is None:
+                    raise ValueError(f"When using vLLM, 'base_url' is required for '{name}'.")
+                llm = ChatOpenAI(
+                    model=model_id,
+                    temperature=temperature,
+                    max_tokens=max_new_tokens,
+                    timeout=None,
+                    max_retries=2,
+                    openai_api_key=openai_api_key or "EMPTY",
+                    openai_api_base=base_url,
+                    streaming=True,
+                )
+            self.llm_dict[name] = llm
+            logger.info(f"✅ Successfully created LLM instance for {name}")
+        return self.llm_dict
+
+    def _build_system_prompt(self) -> str:
+        """
+        Dynamically build the system prompt, injecting the name/description 
+        of each tool into the template.
+        """
+        tools_section = self._build_tools_section()
+        system_prompt = REACT_AGENT_SYSTEM_PROMPT.format(tools_section=tools_section)
+        return system_prompt
+
+    def _build_tools_section(self) -> str:
+        """
+        Returns a string enumerating the agent's available tools.
+        """
+        lines = []
+        for i, tool in enumerate(self.tools, start=1):
+            line = f"{i}. {tool.name}: {tool.description}"
+            lines.append(line)
+        return "\n".join(lines)
+
+    def run(self, message: BaseMessage):
+        """
+        Process a message synchronously and return the final AI response.
+        """
+        try:
+            config = {"configurable": {"thread_id": self.thread_id}}
+            response = self.state_graph.invoke({"messages": [message]}, config=config)
+            ai_message = response["messages"][-1]
+            if isinstance(ai_message, AIMessage):
+                return ai_message
+            else:
+                logger.error("Unexpected message type in response.")
+                raise ValueError("Expected AIMessage in the response.")
+        except Exception as e:
+            logger.error("Error generating response", exc_info=True)
+            return AIMessage(content="Sorry, I encountered an error while processing your request.")
+
+    def run_stream(self, message: BaseMessage):
+        """
+        Process a message in streaming mode and return an iterator over the stream.
+        """
+        try:
+            config = {"configurable": {"thread_id": self.thread_id}}
+            # state_graph.stream expects input in the form {"messages": [message]}
+            return self.state_graph.stream({"messages": [message]}, config=config, stream_mode=["messages", "updates"])
+        except Exception as e:
+            logger.error("Error during streaming invocation", exc_info=True)
+            raise e
