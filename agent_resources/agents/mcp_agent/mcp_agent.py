@@ -3,14 +3,10 @@ from typing import Dict
 from langchain_core.messages import BaseMessage, AIMessage
 from agent_resources.base_agent import Agent
 from agent_resources.prompts import REACT_AGENT_SYSTEM_PROMPT
-from agent_resources.tools.tool_registry import ToolRegistry
 from langgraph.prebuilt import create_react_agent
 from langchain_openai import ChatOpenAI
 
 logger = logging.getLogger(__name__)
-
-# Retrieve the desired tools (for example, "tavily_search")
-tools = ToolRegistry.get_tools(['tavily_search'])
 
 class MCPAgent(Agent):
     def __init__(
@@ -18,14 +14,15 @@ class MCPAgent(Agent):
         llm_configs: Dict = None,
         memory=None,
         thread_id=None,
-        tools=tools,
+        tools=None,
         **kwargs
     ):
         """
-        Initializes an MCPAgent by loading LLM configurations, tools, and building a reactive graph.
+        Initializes an MCPAgent by loading LLM configurations, accepting an externally provided
+        list of tools, and building a reactive graph.
         """
         self.use_openai = kwargs.get("use_openai", False)
-        self.tools = tools if tools else []
+        self.tools = tools if tools is not None else []
         self.build_llm_dict(llm_configs)
         self.memory = memory
         self.thread_id = thread_id if thread_id else 'default'
@@ -34,7 +31,7 @@ class MCPAgent(Agent):
     def build_graph(self):
         """
         Construct the agent's state graph using a dynamic system prompt.
-        This uses langgraph.prebuilt.create_react_agent.
+        This utilizes langgraph.prebuilt.create_react_agent.
         """
         try:
             system_prompt = self._build_system_prompt()
@@ -42,7 +39,7 @@ class MCPAgent(Agent):
                 self.llm_dict['default_llm'],
                 tools=self.tools,
                 checkpointer=self.memory,
-                state_modifier=system_prompt,  
+                state_modifier=system_prompt,
             )
             return state_graph
         except ValueError as ve:
@@ -101,8 +98,7 @@ class MCPAgent(Agent):
 
     def _build_system_prompt(self) -> str:
         """
-        Dynamically build the system prompt, injecting the name/description 
-        of each tool into the template.
+        Build the dynamic system prompt by injecting information about the available tools.
         """
         tools_section = self._build_tools_section()
         system_prompt = REACT_AGENT_SYSTEM_PROMPT.format(tools_section=tools_section)
@@ -110,7 +106,7 @@ class MCPAgent(Agent):
 
     def _build_tools_section(self) -> str:
         """
-        Returns a string enumerating the agent's available tools.
+        Returns a string that enumerates the agent's available tools.
         """
         lines = []
         for i, tool in enumerate(self.tools, start=1):
@@ -141,7 +137,6 @@ class MCPAgent(Agent):
         """
         try:
             config = {"configurable": {"thread_id": self.thread_id}}
-            # state_graph.stream expects input in the form {"messages": [message]}
             return self.state_graph.stream({"messages": [message]}, config=config, stream_mode=["messages", "updates"])
         except Exception as e:
             logger.error("Error during streaming invocation", exc_info=True)
