@@ -3,8 +3,8 @@
 
 echo "Sending Query 1"
 curl -N -X POST -H "Content-Type: application/json" \
-  -d '{"agent_type": "mcp_agent", "user_query": "what is 5 + 8?"}' \
-  http://localhost:8001/ask_stream
+  -d '{"agent_type": "mcp_agent", "user_query": "what is 5 + 2?"}' \
+  http://localhost:8001/ask
 echo -e "\nQuery 1 completed.\n"
 
 # sleep 2

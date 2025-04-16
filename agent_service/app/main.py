@@ -1,86 +1,80 @@
 import json
 import logging
-import sys
 import os
 import uuid
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
-
-from langchain_core.messages import HumanMessage, AIMessage, AIMessageChunk
-from langgraph.checkpoint.memory import MemorySaver
-from agent_resources.agent_factory import AgentFactory
+from langchain_openai import ChatOpenAI
+from langgraph.prebuilt import create_react_agent
+from langchain_mcp_adapters.tools import load_mcp_tools
+from mcp import ClientSession
+from mcp.client.sse import sse_client
+from langchain_core.messages import AIMessageChunk
 from .models import QueryRequest
-from .utils import load_llm_configs
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
-
 load_dotenv()
 
-USE_OPENAI = True
-# Load from your config.yaml
-all_configs = load_llm_configs()
-llm_configs = all_configs["openai"] if USE_OPENAI else all_configs["vllm"]
+app = FastAPI(title="Agent MCP Client")
 
-app = FastAPI(title="Conversational Agent API", version="1.0.0")
-
-shared_memory = MemorySaver()
-agent_factory = AgentFactory(memory=shared_memory, thread_id=str(uuid.uuid4()))
-
-agent = agent_factory.factory(
-    agent_type="mcp_agent",
-    llm_configs=llm_configs,
-    use_openai=USE_OPENAI,
-)
+MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://mcp-server:8002/sse")
+model = ChatOpenAI(model="gpt-3.5-turbo")
 
 @app.post("/ask_stream")
 async def ask_stream(request: QueryRequest):
-    user_query = request.user_query
-    logger.info(f"ask_stream received query: {user_query!r}")
+    # Explicitly create an SSE transport (read, write) for MCP
+    async with sse_client(MCP_SERVER_URL) as (read, write):
+        # ClientSession handles MCP messaging lifecycle
+        async with ClientSession(read, write) as session:
+            # Initialize session (required!)
+            await session.initialize()
 
-    human_msg = HumanMessage(content=user_query)
-    try:
-        # agent.run_stream(...) returns an iterator of (stream_mode, data)
-        stream_iter = agent.run_stream(human_msg)
-        logger.info("Got streaming iterator from agent.")
-    except Exception as e:
-        logger.error("Error creating stream", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+            # Load MCP tools dynamically into LangGraph
+            tools = await load_mcp_tools(session)
 
-    def event_generator():
-        """
-        Yields SSE-like lines of JSON:
-          - {"mode": "messages", "data": "... partial text ..."}
-          - {"mode": "model_used", "data": "...model name..."}
-        """
-        for stream_mode, data in stream_iter:
-            # data should be (chunk_obj, metadata_dict)
-            if not (isinstance(data, tuple) and len(data) == 2):
-                continue
+            # Create React-style LangGraph agent
+            agent = create_react_agent(model, tools)
 
-            chunk_obj, metadata = data
+            # Stream agent response (correctly!)
+            stream_iter = agent.astream({"messages": request.user_query})
 
-            # Skip user messages
-            if isinstance(chunk_obj, HumanMessage):
-                continue
+            async def event_generator():
+                async for update_dict in stream_iter:
+                    if "messages" in update_dict:
+                        messages = update_dict["messages"]
+                        for message in messages:
+                            if isinstance(message, AIMessageChunk):
+                                yield json.dumps({"content": message.content}) + "\n"
+                            else:
+                                yield json.dumps({"content": str(message)}) + "\n"
+                    else:
+                        yield json.dumps({"update": str(update_dict)}) + "\n"
 
-            # Stream partial tokens
-            if isinstance(chunk_obj, AIMessageChunk):
-                partial_text = chunk_obj.content
-                yield json.dumps({"mode": "messages", "data": partial_text}) + "\n"
-                continue
+            return StreamingResponse(event_generator(), media_type="text/event-stream")
 
-            # Final AIMessage => we do NOT repeat its text
-            if isinstance(chunk_obj, AIMessage):
-                # Instead, we just yield the model name
-                final_model = chunk_obj.additional_kwargs.get("model_used", "unknown")
-                yield json.dumps({"mode": "model_used", "data": final_model}) + "\n"
-                break  # We are done streaming
+@app.post("/ask")
+async def ask(request: QueryRequest):
+    async with sse_client(MCP_SERVER_URL) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            tools = await load_mcp_tools(session)
+            agent = create_react_agent(model, tools)
 
-        logger.info("Finished streaming tokens.")
+            # Invoke the agent without streaming
+            agent_response = await agent.ainvoke({"messages": request.user_query})
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+            # Extract the final AI message content safely
+            final_response = ""
+            if "messages" in agent_response:
+                messages = agent_response["messages"]
+                for message in reversed(messages):
+                    if hasattr(message, 'content') and message.content.strip():
+                        final_response = message.content
+                        break
+
+            return {"response": final_response}
 
 
 @app.get("/health")
