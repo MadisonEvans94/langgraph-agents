@@ -2,80 +2,52 @@ import json
 import logging
 import os
 import uuid
+from agent_resources.agent_factory import AgentFactory
 from fastapi import FastAPI
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
-from langgraph.prebuilt import create_react_agent
 from langchain_mcp_adapters.tools import load_mcp_tools
 from mcp import ClientSession
 from mcp.client.sse import sse_client
-from langchain_core.messages import AIMessageChunk
 from .models import QueryRequest
+from .utils import load_llm_configs
+from langgraph.checkpoint.memory import MemorySaver
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 load_dotenv()
 
+USE_OPENAI = True
+all_configs = load_llm_configs()
+llm_configs = all_configs.get("openai" if USE_OPENAI else "vllm", {})
+
 app = FastAPI(title="Agent MCP Client")
-
 MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://mcp-server:8002/sse")
-model = ChatOpenAI(model="gpt-3.5-turbo")
-
-@app.post("/ask_stream")
-async def ask_stream(request: QueryRequest):
-    # Explicitly create an SSE transport (read, write) for MCP
-    async with sse_client(MCP_SERVER_URL) as (read, write):
-        # ClientSession handles MCP messaging lifecycle
-        async with ClientSession(read, write) as session:
-            # Initialize session (required!)
-            await session.initialize()
-
-            # Load MCP tools dynamically into LangGraph
-            tools = await load_mcp_tools(session)
-
-            # Create React-style LangGraph agent
-            agent = create_react_agent(model, tools)
-
-            # Stream agent response (correctly!)
-            stream_iter = agent.astream({"messages": request.user_query})
-
-            async def event_generator():
-                async for update_dict in stream_iter:
-                    if "messages" in update_dict:
-                        messages = update_dict["messages"]
-                        for message in messages:
-                            if isinstance(message, AIMessageChunk):
-                                yield json.dumps({"content": message.content}) + "\n"
-                            else:
-                                yield json.dumps({"content": str(message)}) + "\n"
-                    else:
-                        yield json.dumps({"update": str(update_dict)}) + "\n"
-
-            return StreamingResponse(event_generator(), media_type="text/event-stream")
+shared_memory = MemorySaver()
+agent_factory = AgentFactory(memory=shared_memory)
 
 @app.post("/ask")
 async def ask(request: QueryRequest):
+    thread_id = request.thread_id or "default"
+
     async with sse_client(MCP_SERVER_URL) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
-            tools = await load_mcp_tools(session)
-            agent = create_react_agent(model, tools)
 
-            # Invoke the agent without streaming
-            agent_response = await agent.ainvoke({"messages": request.user_query})
+            # Create agent with persistent memory and ephemeral MCP session
+            agent = await agent_factory.factory(
+                agent_type="mcp_agent",
+                use_openai=USE_OPENAI,
+                use_mcp=True,
+                mcp_session=session,
+                llm_configs=llm_configs,
+                thread_id=thread_id
+            )
 
-            # Extract the final AI message content safely
-            final_response = ""
-            if "messages" in agent_response:
-                messages = agent_response["messages"]
-                for message in reversed(messages):
-                    if hasattr(message, 'content') and message.content.strip():
-                        final_response = message.content
-                        break
+            ai_msg = await agent.run_async(message=request.user_query)
 
-            return {"response": final_response}
-
+            return JSONResponse(content={"response": ai_msg.content, "thread_id": thread_id})
 
 @app.get("/health")
 def health():

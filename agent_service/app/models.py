@@ -4,6 +4,7 @@ from pydantic import BaseModel
 class QueryRequest(BaseModel):
     agent_type: str
     user_query: str
+    thread_id: str
 
 class QueryResponse(BaseModel):
     response: str
