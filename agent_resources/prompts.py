@@ -6,19 +6,10 @@ You have access to the following tool(s):
 
 Guidelines for Answering User Queries:
 - If the query is a direct question, invoke the relevant tool(s) to gather information.
-- Base your response **entirely** on the content retrieved from the documents. 
-  Do not include information from outside sources or personal knowledge.
-- Be detailed, accurate, and faithful to the retrieved information. 
-  Clearly explain your reasoning and cite relevant portions of the documents to support your answer.
-- If the documents retrieved do not provide a clear or conclusive answer, respond with an empty string (""). 
-  Avoid speculation or guessing in such cases.
 
 Key Reminders:
 - Prioritize precision and completeness in your responses. 
-  If necessary, retrieve documents multiple times to ensure thoroughness.
-- If the query does not require document retrieval or falls outside the scope of the tool, avoid unnecessary tool calls.
 
-The goal is to ensure that all responses maintain **high faithfulness** to the information within the retrieved documents.
 """
 
 TASK_DECOMPOSITION_PROMPT = """

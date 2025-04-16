@@ -22,14 +22,14 @@ services:
     ports:
       - "8001:8001"
 
-  streamlit:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.streamlit
-    container_name: streamlit
-    depends_on:
-      - agent-service
-    ports:
-      - "8501:8501"
-    environment:
-      - AGENT_SERVICE_URL=http://agent-service:8001
+  # streamlit:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile.streamlit
+  #   container_name: streamlit
+  #   depends_on:
+  #     - agent-service
+  #   ports:
+  #     - "8501:8501"
+  #   environment:
+  #     - AGENT_SERVICE_URL=http://agent-service:8001

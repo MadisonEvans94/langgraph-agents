@@ -1,12 +1,17 @@
 import logging
 from typing import Dict
-from langchain_core.messages import BaseMessage, AIMessage
+from langchain_core.messages import BaseMessage, AIMessage, SystemMessage
 from agent_resources.base_agent import Agent
 from agent_resources.prompts import REACT_AGENT_SYSTEM_PROMPT
 from langgraph.prebuilt import create_react_agent
 from langchain_openai import ChatOpenAI
+from langchain.tools import tool
 
 logger = logging.getLogger(__name__)
+
+@tool(description="add two numbers together")
+def add(a: int, b: int) -> int:
+    return a + b
 
 class MCPAgent(Agent):
     def __init__(
@@ -22,7 +27,8 @@ class MCPAgent(Agent):
         list of tools, and building a reactive graph.
         """
         self.use_openai = kwargs.get("use_openai", False)
-        self.tools = tools if tools is not None else []
+        # self.tools = tools if tools is not None else []
+        self.tools=[add]
         self.build_llm_dict(llm_configs)
         self.memory = memory
         self.thread_id = thread_id if thread_id else 'default'
@@ -33,13 +39,15 @@ class MCPAgent(Agent):
         Construct the agent's state graph using a dynamic system prompt.
         This utilizes langgraph.prebuilt.create_react_agent.
         """
+        for tool in self.tools: 
+            logger.info(f"\n\n\n{tool}\n\n\n")
         try:
             system_prompt = self._build_system_prompt()
             state_graph = create_react_agent(
                 self.llm_dict['default_llm'],
                 tools=self.tools,
                 checkpointer=self.memory,
-                state_modifier=system_prompt,
+                prompt=SystemMessage(content=system_prompt),
             )
             return state_graph
         except ValueError as ve:
@@ -102,6 +110,7 @@ class MCPAgent(Agent):
         """
         tools_section = self._build_tools_section()
         system_prompt = REACT_AGENT_SYSTEM_PROMPT.format(tools_section=tools_section)
+        logger.info(f"\n--------------\n\nsystem prompt: \n\n\n{system_prompt}\n\n\n")
         return system_prompt
 
     def _build_tools_section(self) -> str:
@@ -141,3 +150,21 @@ class MCPAgent(Agent):
         except Exception as e:
             logger.error("Error during streaming invocation", exc_info=True)
             raise e
+        
+    async def run_async(self, message: BaseMessage):
+        """
+        Process a message asynchronously and return the final AI response.
+        """
+        try:
+            config = {"configurable": {"thread_id": self.thread_id}}
+            response = await self.state_graph.ainvoke({"messages": [message]}, config=config)
+            ai_message = response["messages"][-1]
+            if isinstance(ai_message, AIMessage):
+                return ai_message
+            else:
+                logger.error("Unexpected message type in async response.")
+                raise ValueError("Expected AIMessage in the response.")
+        except Exception as e:
+            logger.error("Error generating async response", exc_info=True)
+            return AIMessage(content="Sorry, I encountered an error while processing your request.")
+
