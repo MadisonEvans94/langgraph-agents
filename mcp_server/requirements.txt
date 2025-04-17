@@ -1,3 +1,5 @@
 mcp
 langchain-mcp-adapters
 uvicorn
+langchain
+langchain-community
