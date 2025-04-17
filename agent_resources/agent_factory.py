@@ -6,7 +6,6 @@ from agent_resources.base_agent import Agent
 from .agents.conversational_agent.conversational_agent import ConversationalAgent
 import uuid
 from langchain.tools import BaseTool
-from agent_resources.tools.tool_registry import ToolRegistry
 
 class AgentFactory:
     """
