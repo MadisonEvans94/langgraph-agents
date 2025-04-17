@@ -11,11 +11,11 @@ class Agent(ABC):
     """
     Abstract base class for all agents.
     """
-    
+
     def visualize_workflow(self, save_path: str = None):
         """
         Visualize the agent's workflow. Optionally save the visualization as an image.
-        
+
         :param save_path: Optional path to save the image.
         """
         graph_image = self.state_graph.get_graph().draw_mermaid_png(
@@ -32,6 +32,9 @@ class Agent(ABC):
             print(f"Workflow visualization saved at: {save_path}")
 
     def _build_llm_dict(self, llm_configs: Dict) -> Dict[str, BaseChatModel]:
+        """
+        Build a mapping from config names to your wrapped chat-model instances.
+        """
         self.llm_dict = {
             name: ChatVLLMWrapper(
                 client=OpenAI(
@@ -48,20 +51,17 @@ class Agent(ABC):
         }
         return self.llm_dict
 
-
     @abstractmethod
     def build_graph(self):
         """
-        method for compiling graph and creating executable agent
+        Compile the LangGraph state‐graph and return an executable graph object.
         """
         pass
 
     @abstractmethod
-    def run(self, message, **kwargs) -> AIMessage:
+    def invoke(self, message, **kwargs) -> AIMessage:
         """
-        Abstract method that all agents must implement.
-        Takes a HumanMessage as input and returns an AIMessage as the response.
+        Abstract sync entrypoint: take a BaseMessage (e.g. HumanMessage) and
+        return an AIMessage. Subclasses should call .state_graph.invoke(...) under the hood.
         """
         pass
-
-    
