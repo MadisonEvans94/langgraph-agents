@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 # Set up logging
@@ -16,17 +17,15 @@ MCP_CONFIG = {
     }
 }
 
-
-async def initialize_mcp_tools(config: dict = MCP_CONFIG):
+@asynccontextmanager
+async def mcp_tools_session(config: dict = MCP_CONFIG):
     async with MultiServerMCPClient(config) as mcp_client:
-        tools = mcp_client.get_tools()
-        tool_names = [t.name for t in tools]
-        logger.info("Loaded MCP tools: %s", tool_names)
-        return tools
-
+        yield mcp_client.get_tools()
 
 # For quick testing.
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    mcp_tools = loop.run_until_complete(initialize_mcp_tools())
-    logger.info("Loaded MCP tools: %s", [t.name for t in mcp_tools])
+    async def main():
+        async with mcp_tools_session() as tools:
+            logger.info("Loaded MCP tools: %s", [t.name for t in tools])
+
+    asyncio.run(main())

@@ -5,6 +5,7 @@ import uuid
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
+from langchain_core.messages import HumanMessage
 from langchain_mcp_adapters.tools import load_mcp_tools
 from mcp import ClientSession
 from mcp.client.sse import sse_client
@@ -49,7 +50,7 @@ async def ask(request: QueryRequest):
                 llm_configs=llm_configs,
             )
 
-            ai_msg = await agent.run_async(message=request.user_query)
+            ai_msg = await agent.ainvoke(HumanMessage(content=request.user_query))
 
             return JSONResponse(content={
                 "response": ai_msg.content,
