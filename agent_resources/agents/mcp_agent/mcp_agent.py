@@ -27,9 +27,9 @@ class MCPAgent(Agent):
         list of tools, and building a reactive graph.
         """
         self.use_openai = kwargs.get("use_openai", False)
-        # self.tools = tools if tools is not None else []
-        self.tools=[add]
-        self.build_llm_dict(llm_configs)
+        self.tools = tools if tools is not None else []
+        # self.tools=[add]
+        self.llm_dict = self.build_llm_dict(llm_configs)
         self.memory = memory
         self.thread_id = thread_id if thread_id else 'default'
         self.state_graph = self.build_graph()
@@ -39,8 +39,7 @@ class MCPAgent(Agent):
         Construct the agent's state graph using a dynamic system prompt.
         This utilizes langgraph.prebuilt.create_react_agent.
         """
-        for tool in self.tools: 
-            logger.info(f"\n\n\n{tool}\n\n\n")
+
         try:
             system_prompt = self._build_system_prompt()
             state_graph = create_react_agent(
@@ -64,19 +63,22 @@ class MCPAgent(Agent):
         for key in required_keys:
             if key not in llm_configs:
                 raise ValueError(f"Missing required LLM configuration: '{key}'.")
-        self.llm_dict = {}
+        llm_dict = {}
         logger.info("🛠️ Building LLM dictionary...")
         for name, config in llm_configs.items():
+
             if not config:
                 raise ValueError(f"Configuration for '{name}' is empty.")
             model_id = config.get("model_id") or config.get("model")
+
             if model_id is None:
                 raise ValueError(f"Configuration for '{name}' must include 'model_id' or 'model'.")
+            
             temperature = config.get("temperature", 0.7)
             openai_api_key = config.get("api_key", "")
             base_url = config.get("base_url")
             max_new_tokens = config.get("max_new_tokens", 512)
-            logger.info(f"🔹 Config for {name}: model={model_id}, temp={temperature}, streaming=True")
+
             if self.use_openai:
                 llm = ChatOpenAI(
                     model=model_id,
@@ -100,9 +102,9 @@ class MCPAgent(Agent):
                     openai_api_base=base_url,
                     streaming=True,
                 )
-            self.llm_dict[name] = llm
-            logger.info(f"✅ Successfully created LLM instance for {name}")
-        return self.llm_dict
+
+            llm_dict[name] = llm
+        return llm_dict
 
     def _build_system_prompt(self) -> str:
         """
