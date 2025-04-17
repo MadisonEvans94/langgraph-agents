@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 from agent_resources.agent_factory import AgentFactory
-from .models import QueryRequest
+from .models import QueryRequest, QueryResponse
 from .utils import load_llm_configs
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -19,10 +19,11 @@ logging.basicConfig(level=logging.INFO)
 load_dotenv()
 
 # === App-wide constants ===
-USE_OPENAI = True
+USE_LLM_PROVIDER = True
+LLM_PROVIDER = "openai"
 MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://mcp-server:8002/sse")
 all_configs = load_llm_configs()
-llm_configs = all_configs.get("openai" if USE_OPENAI else "vllm", {})
+llm_configs = all_configs.get(LLM_PROVIDER if USE_LLM_PROVIDER else "vllm", {})
 
 # === Shared memory + factory ===
 shared_memory = MemorySaver()
@@ -76,19 +77,17 @@ async def ask(request: QueryRequest):
     agent = agent_factory.factory(
         agent_type=agent_type,
         thread_id=thread_id,
-        use_openai=USE_OPENAI,
+        use_llm_provider=USE_LLM_PROVIDER,
         llm_configs=llm_configs,
         tools=tools,
     )
 
     ai_msg = await agent.ainvoke(HumanMessage(content=request.user_query))
 
-    return JSONResponse(
-        content={
-            "response": ai_msg.content,
-            "thread_id": thread_id,
-            "agent_type": agent_type,
-        }
+    return QueryResponse(
+        response=ai_msg.content,
+        thread_id=thread_id,
+        agent_type=agent_type,
     )
 
 @app.get("/health")

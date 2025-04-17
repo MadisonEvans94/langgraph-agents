@@ -10,7 +10,7 @@ from langchain.tools import BaseTool
 class AgentFactory:
     """
     Factory class for creating agents with shared configurations.
-    Handles MCP and non-MCP agents asynchronously.
+    Handles MCP and non-MCP agents.
     """
     def __init__(self, memory: MemorySaver):
         self.memory = memory
@@ -24,13 +24,13 @@ class AgentFactory:
         self,
         agent_type: str,
         thread_id: Optional[str] = None,
-        use_openai: bool = False,
-        tools: List[BaseTool] = [], 
+        use_llm_provider: bool = False,
+        tools: List[BaseTool] = [],
         **kwargs
     ) -> Agent:
         """
-        Asynchronously create an agent instance.
-        Expects an explicit `tools` list in kwargs, or falls back to the registry.
+        Create an agent instance.
+        `use_llm_provider` selects whether to use the configured LLM backend.
         """
         agent_class = self.agent_registry.get(agent_type)
         if agent_class is None:
@@ -41,7 +41,7 @@ class AgentFactory:
         return agent_class(
             memory=self.memory,
             thread_id=thread_id,
-            use_openai=use_openai,
-            tools = tools, 
+            use_llm_provider=use_llm_provider,
+            tools=tools,
             **kwargs,
         )

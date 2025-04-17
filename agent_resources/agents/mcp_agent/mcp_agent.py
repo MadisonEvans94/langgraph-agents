@@ -8,7 +8,7 @@ from langchain_openai import ChatOpenAI
 
 logger = logging.getLogger(__name__)
 
-def make_llm(config: dict, use_openai: bool) -> ChatOpenAI:
+def make_llm(config: dict, use_llm_provider: bool) -> ChatOpenAI:
     model_id = config.get("model_id") or config.get("model")
     if model_id is None:
         raise ValueError("LLM config must include 'model_id' or 'model'.")
@@ -23,12 +23,12 @@ def make_llm(config: dict, use_openai: bool) -> ChatOpenAI:
         timeout=None,
         max_retries=2,
         streaming=True,
-        openai_api_key=api_key or "EMPTY",
+        api_key=api_key or "EMPTY",
     )
-    if not use_openai:
+    if not use_llm_provider:
         if not base_url:
             raise ValueError(f"When using vLLM, 'base_url' is required for model {model_id}.")
-        params["openai_api_base"] = base_url
+        params["api_base"] = base_url
     return ChatOpenAI(**params)
 
 class MCPAgent(Agent):
@@ -40,7 +40,7 @@ class MCPAgent(Agent):
         tools=None,
         **kwargs
     ):
-        self.use_openai = kwargs.get("use_openai", False)
+        self.use_llm_provider = kwargs.get("use_llm_provider", False)
         self.tools = tools or []
         self.llm_dict = self.build_llm_dict(llm_configs)
         self.memory = memory
@@ -65,7 +65,7 @@ class MCPAgent(Agent):
                 raise ValueError(f"Missing required LLM config: '{key}'.")
         logger.info("🛠️ Building LLM dictionary...")
         llm_dict: Dict[str, ChatOpenAI] = {
-            name: make_llm(cfg, self.use_openai)
+            name: make_llm(cfg, self.use_llm_provider)
             for name, cfg in llm_configs.items()
         }
         return llm_dict
@@ -81,9 +81,6 @@ class MCPAgent(Agent):
         )
 
     def invoke(self, message: BaseMessage) -> AIMessage:
-        """
-        Synchronous invoke → returns the final AIMessage.
-        """
         try:
             config = {"configurable": {"thread_id": self.thread_id}}
             resp = self.state_graph.invoke({"messages": [message]}, config=config)
@@ -96,9 +93,6 @@ class MCPAgent(Agent):
             return AIMessage(content="Sorry, I hit an error.")
 
     def stream(self, message: BaseMessage):
-        """
-        Streaming invoke → yields (mode, data) tuples.
-        """
         try:
             config = {"configurable": {"thread_id": self.thread_id}}
             return self.state_graph.stream(
@@ -111,9 +105,6 @@ class MCPAgent(Agent):
             raise
 
     async def ainvoke(self, message: BaseMessage) -> AIMessage:
-        """
-        Async invoke → returns the final AIMessage.
-        """
         try:
             config = {"configurable": {"thread_id": self.thread_id}}
             resp = await self.state_graph.ainvoke({"messages": [message]}, config=config)
