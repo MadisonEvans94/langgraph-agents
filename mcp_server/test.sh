@@ -2,9 +2,9 @@
 
 
 # Default values
-AGENT_TYPE=${1:-"mcp_agent"}
+AGENT_TYPE=${1:-"conversational_agent"}
 THREAD_ID=${2:-"test-thread-1"}
-USER_QUERY=${3:-"who is the current secretary of state in the US?"}
+USER_QUERY=${3:-"hi"}
 
 # Log what you're sending
 echo "Sending to agent:"
