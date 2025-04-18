@@ -19,8 +19,8 @@ logging.basicConfig(level=logging.INFO)
 load_dotenv()
 
 # === App-wide constants ===
-USE_LLM_PROVIDER = True
-LLM_PROVIDER = "openai"
+USE_LLM_PROVIDER = os.getenv("USE_LLM_PROVIDER", True)
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")
 MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://mcp-server:8002/sse")
 all_configs = load_llm_configs()
 llm_configs = all_configs.get(LLM_PROVIDER if USE_LLM_PROVIDER else "vllm", {})
@@ -32,7 +32,7 @@ agent_factory = AgentFactory(memory=shared_memory)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Open a single long‑lived SSE + ClientSession to the MCP server.
+    Open a single longlived SSE + ClientSession to the MCP server.
     Cache the tool wrappers so each request can reuse them without reconnecting.
     """
     # Safe default
@@ -66,10 +66,10 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Agent MCP Client", lifespan=lifespan)
 
-@app.post("/ask")
+@app.post("/invoke")
 async def ask(request: QueryRequest):
     thread_id = request.thread_id or str(uuid.uuid4())
-    agent_type = request.agent_type or "mcp_agent"
+    agent_type = request.agent_type or "react_agent"
 
     # Reuse cached tool wrappers
     tools = app.state.tools
