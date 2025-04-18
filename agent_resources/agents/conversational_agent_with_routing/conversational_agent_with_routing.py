@@ -19,7 +19,7 @@ class ConversationalAgentWithRouting(Agent):
         self.use_llm_provider = kwargs.get("use_llm_provider", False)
         self.memory = memory
         self.thread_id = thread_id or "default"
-        self.llm_dict = self.build_llm_dict(llm_configs)
+        self.llm_dict = self._build_llm_dict(llm_configs)
         self.state_graph = self.build_graph()
 
     def build_graph(self):
