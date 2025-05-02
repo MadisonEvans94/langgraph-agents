@@ -18,14 +18,14 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 load_dotenv()
 
-# === App-wide constants ===
+#  App-wide constants
 USE_LLM_PROVIDER = os.getenv("USE_LLM_PROVIDER", True)
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")
 MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://mcp-server:8002/sse")
 all_configs = load_llm_configs()
 llm_configs = all_configs.get(LLM_PROVIDER if USE_LLM_PROVIDER else "vllm", {})
 
-# === Shared memory + factory ===
+# Shared memory + factory 
 shared_memory = MemorySaver()
 agent_factory = AgentFactory(memory=shared_memory)
 
@@ -33,7 +33,6 @@ agent_factory = AgentFactory(memory=shared_memory)
 async def lifespan(app: FastAPI):
     """
     Open a single longlived SSE + ClientSession to the MCP server.
-    Cache the tool wrappers so each request can reuse them without reconnecting.
     """
     # Safe default
     app.state.tools = []
@@ -51,7 +50,7 @@ async def lifespan(app: FastAPI):
         app.state.tools = await load_mcp_tools(session)
         logger.info(f"✅ Loaded {len(app.state.tools)} MCP tools")
 
-        yield  # ------------ FastAPI runs ------------
+        yield 
 
     except Exception as e:
         logger.warning(f"Failed to connect to MCP: {e}")
@@ -62,7 +61,7 @@ async def lifespan(app: FastAPI):
         if app.state.mcp_session:
             await session_cm.__aexit__(None, None, None)
         await sse_cm.__aexit__(None, None, None)
-        logger.info("🔌 MCP session closed")
+        logger.info("MCP session closed")
 
 app = FastAPI(title="Agent MCP Client", lifespan=lifespan)
 

@@ -14,9 +14,11 @@ class ReactAgent(Agent):
         memory=None,
         thread_id=None,
         tools=None,
+        name="react_agent", 
         **kwargs
     ):
         self.use_llm_provider = kwargs.get("use_llm_provider", False)
+        self.name = name
         self.tools = tools or []
         self._build_llm_dict(llm_configs)
         self.memory = memory
@@ -30,6 +32,7 @@ class ReactAgent(Agent):
             tools=self.tools,
             checkpointer=self.memory,
             prompt=SystemMessage(content=system_prompt),
+            name=self.name
         )
 
     
