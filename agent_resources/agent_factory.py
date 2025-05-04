@@ -1,6 +1,6 @@
 from typing import Dict, Type, Optional, List
 from langgraph.checkpoint.memory import MemorySaver
-from .agents.mcp_agent.mcp_agent import MCPAgent
+from .agents.react_agent.react_agent import ReactAgent
 from .agents.conversational_agent_with_routing.conversational_agent_with_routing import ConversationalAgentWithRouting
 from agent_resources.base_agent import Agent
 from .agents.conversational_agent.conversational_agent import ConversationalAgent
@@ -16,8 +16,8 @@ class AgentFactory:
         self.memory = memory
         self.agent_registry: Dict[str, Type[Agent]] = {
             "conversational_agent": ConversationalAgent,
-            "conversational_agent_with_routing": ConversationalAgentWithRouting,
-            "mcp_agent": MCPAgent,
+            # "conversational_agent_with_routing": ConversationalAgentWithRouting,
+            "react_agent": ReactAgent
         }
 
     def factory(

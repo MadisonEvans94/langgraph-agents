@@ -1,7 +1,6 @@
 # mcp_server/Dockerfile.mcp-server
 FROM python:3.10-slim
 
-# Install any system packages you need
 RUN apt-get update && apt-get install -y \
     bash \
     curl \
@@ -13,16 +12,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Copy only the requirements if you have them for your MCP server
-# For example, if you have a requirements.txt in mcp_server
-# If your server is super simple, you might directly pip install inside
 COPY requirements.txt . 
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Or, if your server code doesn't have a separate requirements,
-# you can do: RUN pip install mcp uvicorn  (or any other packages needed)
-
-# Copy all your server code
 COPY . .
 
 # Expose port 8002 for the SSE server
@@ -31,5 +23,4 @@ EXPOSE 8002
 # Set default environment variable for MCP_SERVER_PORT
 ENV MCP_SERVER_PORT=8002
 
-# Launch your server
 CMD ["python", "server.py"]

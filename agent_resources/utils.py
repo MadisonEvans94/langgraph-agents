@@ -1,6 +1,6 @@
 import logging
 from typing import Iterator, Union
-
+from langchain_openai import ChatOpenAI
 from langchain_core.messages import BaseMessage, AIMessage, AIMessageChunk
 from langchain_core.messages.utils import convert_to_openai_messages
 from pydantic import BaseModel
@@ -147,3 +147,26 @@ class ChatVLLMWrapper:
             functions.append(func_def)
         logger.info(f"Converted {len(functions)} tools to function definitions.")
         return functions
+
+def make_llm(config: dict, use_llm_provider: bool) -> ChatOpenAI:
+    model_id = config.get("model_id") or config.get("model")
+    if model_id is None:
+        raise ValueError("LLM config must include 'model_id' or 'model'.")
+    temperature = config.get("temperature", 0.7)
+    max_new_tokens = config.get("max_new_tokens") or config.get("max_tokens", 512)
+    api_key = config.get("api_key", "")
+    base_url = config.get("base_url")
+    params = dict(
+        model=model_id,
+        temperature=temperature,
+        max_tokens=max_new_tokens,
+        timeout=None,
+        max_retries=2,
+        streaming=True,
+        api_key=api_key or "EMPTY",
+    )
+    if not use_llm_provider:
+        if not base_url:
+            raise ValueError(f"When using vLLM, 'base_url' is required for model {model_id}.")
+        params["api_base"] = base_url
+    return ChatOpenAI(**params)

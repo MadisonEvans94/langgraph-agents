@@ -2,9 +2,9 @@
 
 
 # Default values
-AGENT_TYPE=${1:-"mcp_agent"}
+AGENT_TYPE=${1:-"react_agent"}
 THREAD_ID=${2:-"test-thread-1"}
-USER_QUERY=${3:-"thanks"}
+USER_QUERY=${3:-"what is 9 times 4?"}
 
 # Log what you're sending
 echo "Sending to agent:"
@@ -16,4 +16,4 @@ echo ""
 # Send request
 curl -s -X POST -H "Content-Type: application/json" \
   -d "{\"agent_type\": \"$AGENT_TYPE\", \"thread_id\": \"$THREAD_ID\", \"user_query\": \"$USER_QUERY\"}" \
-  http://localhost:8001/ask | jq
+  http://localhost:8001/invoke | jq
