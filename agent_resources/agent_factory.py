@@ -6,6 +6,7 @@ from agent_resources.base_agent import Agent
 from .agents.conversational_agent.conversational_agent import ConversationalAgent
 import uuid
 from langchain.tools import BaseTool
+from .agents.orchestrator.orchestrator_agent import OrchestratorAgent
 
 class AgentFactory:
     """
@@ -17,7 +18,8 @@ class AgentFactory:
         self.agent_registry: Dict[str, Type[Agent]] = {
             "conversational_agent": ConversationalAgent,
             # "conversational_agent_with_routing": ConversationalAgentWithRouting,
-            "react_agent": ReactAgent
+            "react_agent": ReactAgent, 
+            "orchestrator_agent": OrchestratorAgent
         }
 
     def factory(

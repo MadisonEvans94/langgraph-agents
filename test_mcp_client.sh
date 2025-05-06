@@ -2,7 +2,7 @@
 
 
 # Default values
-AGENT_TYPE=${1:-"react_agent"}
+AGENT_TYPE=${1:-"orchestrator_agent"}
 THREAD_ID=${2:-"test-thread-1"}
 USER_QUERY=${3:-"what is 9 times 4?"}
 

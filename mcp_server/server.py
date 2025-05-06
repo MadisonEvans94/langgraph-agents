@@ -4,7 +4,7 @@ from mcp.server.fastmcp import FastMCP
 import uvicorn
 from langchain_community.tools.tavily_search import TavilySearchResults
 from dotenv import load_dotenv
-
+from langchain_community.tools import TavilySearchResults
 load_dotenv()
 
 # === Setup logging ===
@@ -15,15 +15,15 @@ logger = logging.getLogger("MCPServer")
 mcp = FastMCP("MCPServer")
 
 # Tavily Web Search Tool (include `TAVILY_API_KEY` in .env in order to use)
-# tavily_search_tool = TavilySearchResults()
+tavily_search_tool = TavilySearchResults()
 
-# @mcp.tool()
-# def web_search(query: str):
-#     """
-#     Perform a web search if query requires external knowledge or up to date information.
-#     """
-#     results, _ = tavily_search_tool._run(query)
-#     return results
+@mcp.tool()
+def web_search(query: str):
+    """
+    Perform a web search if query requires external knowledge or up to date information.
+    """
+    results, _ = tavily_search_tool._run(query)
+    return results
 
 @mcp.tool()
 def add(a: int, b: int) -> int:

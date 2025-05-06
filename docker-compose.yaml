@@ -1,34 +1,4 @@
-# version: "3.8"
 
-# services:
-#   mcp-server:
-#     build:
-#       context: ./aci-mcp
-#       dockerfile: Dockerfile
-#     container_name: mcp-server
-#     env_file:
-#       - .env
-#     ports:
-#       - "8002:8002"
-
-
-#   # ──────────────────────────────────────────────────────────────────────
-#   # Your agent service (unchanged)
-#   # ──────────────────────────────────────────────────────────────────────
-#   agent-service:
-#     build:
-#       context: .
-#       dockerfile: Dockerfile.agent-service
-#     container_name: agent-service
-#     depends_on:
-#       - mcp-server
-#     env_file:
-#       - .env
-#     ports:
-#       - "8001:8001"
-
-
-# docker-compose.yml
 
 services:
   mcp-server:
@@ -53,3 +23,5 @@ services:
       - mcp-server
     ports:
       - "8001:8001"
+    env_file:
+      - .env
