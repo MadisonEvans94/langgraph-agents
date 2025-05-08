@@ -52,10 +52,13 @@ class Agent(ABC):
         pass
 
     def _default_config(self) -> dict:
-        """
-        Standard config including thread_id.
-        """
-        return {"configurable": {"thread_id": self.thread_id}}
+        return {
+            "configurable": {
+                "thread_id": self.thread_id,
+                "checkpoint_ns": self.name,      # e.g. "orchestrator"
+                "checkpoint_id": self.thread_id  # or any per-session identifier
+            }
+        }
 
     def invoke(self, message, **kwargs) -> AIMessage:
         """
