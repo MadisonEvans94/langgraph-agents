@@ -18,7 +18,6 @@ class AgentFactory:
         self.memory = memory
         self.agent_registry: Dict[str, Type[Agent]] = {
             "conversational_agent": ConversationalAgent,
-            # "conversational_agent_with_routing": ConversationalAgentWithRouting,
             "react_agent": ReactAgent, 
             "orchestrator_agent": OrchestratorAgent
         }

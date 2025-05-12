@@ -6,23 +6,21 @@ import logging
 from typing import Dict, List
 
 from langchain.tools import Tool
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from langgraph.prebuilt import create_react_agent
 
 from agent_resources.agents.content_agent.math_agent import MathAgent
 from agent_resources.agents.content_agent.web_search_agent import WebSearchAgent
 from agent_resources.base_agent import Agent
 from agent_resources.prompts import ORCHESTRATOR_AGENT_SYSTEM_PROMPT
-from agent_resources.state_types import OrchestratorState
+from agent_resources.state_types import OrchestratorState, Task
 
 logger = logging.getLogger(__name__)
 
-
 class OrchestratorAgent(Agent):
     """
-    Supervisor agent that routes user queries to domain-specific sub-agents:
-      - math_agent for arithmetic and sequences
-      - web_search_agent for up-to-date information
+    Supervisor agent that routes user queries to sub-agents, and can
+    drain a pre-seeded `tasks` queue via `process_tasks`.
     """
 
     def __init__(
@@ -44,18 +42,14 @@ class OrchestratorAgent(Agent):
         self._llm_configs = llm_configs
         self.memory = memory
         self.thread_id = thread_id or "default"
-
-        # compile its own graph
+        # compile the fallback ReAct graph
         self.state_graph = self.build_graph()
 
     def build_graph(self):
         llm = self.llm_dict["default_llm"]
 
-        # split out the incoming low-level tools into math vs web
+        # Wrap math_agent as a tool
         math_tools = [t for t in self.tools if t.name in {"add", "multiply", "fibonacci"}]
-        web_tools  = [t for t in self.tools if t.name == "web_search"]
-
-        # wrap each sub-agent as a Tool
         math_agent = MathAgent(
             llm_configs={"default_llm": self._llm_configs["default_llm"]},
             tools=math_tools,
@@ -63,11 +57,13 @@ class OrchestratorAgent(Agent):
         )
         math_tool = Tool(
             name="math_agent",
-            description="Delegate arithmetic or sequence computations to a specialized math agent.",
+            description="Delegate arithmetic or sequences to the math agent.",
             func=lambda q: asyncio.run(math_agent.ainvoke(HumanMessage(content=q))).content,
             coroutine=lambda q: math_agent.ainvoke(HumanMessage(content=q)),
         )
 
+        # Wrap web_search_agent as a tool
+        web_tools = [t for t in self.tools if t.name == "web_search"]
         web_agent = WebSearchAgent(
             llm_configs={"default_llm": self._llm_configs["default_llm"]},
             tools=web_tools,
@@ -75,15 +71,18 @@ class OrchestratorAgent(Agent):
         )
         web_tool = Tool(
             name="web_search_agent",
-            description="Perform web searches to retrieve real-time or external information.",
+            description="Perform web searches for external information.",
             func=lambda q: asyncio.run(web_agent.ainvoke(HumanMessage(content=q))).content,
             coroutine=lambda q: web_agent.ainvoke(HumanMessage(content=q)),
         )
 
-        # build the orchestrator system prompt from our new constant
+        # Set self.tools to the wrapped agent tools so process_tasks finds them
+        self.tools = [math_tool, web_tool]
+
+        # Build system prompt listing the two sub-tools
         tools_section = "\n".join(
-            f"{i}. {tool.name}: {tool.description}"
-            for i, tool in enumerate([math_tool, web_tool], start=1)
+            f"{i}. {t.name}: {t.description}"
+            for i, t in enumerate([math_tool, web_tool], start=1)
         )
         orchestrator_prompt = SystemMessage(
             content=ORCHESTRATOR_AGENT_SYSTEM_PROMPT.format(tools_section=tools_section)
@@ -95,17 +94,35 @@ class OrchestratorAgent(Agent):
             checkpointer=self.memory,
             prompt=orchestrator_prompt,
             name=self.name,
-            state_schema=OrchestratorState,       # ← use your custom state
+            state_schema=OrchestratorState,  # declare custom state
         )
 
     async def ainvoke(self, message: HumanMessage):
-        logger.info("Orchestrator (async) received → %s", message.content)
-        resp = await self.state_graph.ainvoke(
+        """
+        Fallback to ReAct if no tasks are pre-seeded.
+        """
+        # If tasks exist in state, ReAct won't see them—use process_tasks instead.
+        return (await self.state_graph.ainvoke(
             {"messages": [message]},
             config=self._default_config(),
-        )
-        return resp["messages"][-1]
+        ))["messages"][-1]
+
+    async def process_tasks(self, tasks: List[Task]) -> AIMessage:
+        """
+        Drain & process the given list of tasks in pure Python,
+        invoking each tool.coroutine, then summarize results.
+        """
+        summary = []
+        for task in tasks:
+            tool = next((t for t in self.tools if t.name == task["assigned_to"]), None)
+            if not tool:
+                out = f"[Error: no tool {task['assigned_to']}]"
+            else:
+                ai = await tool.coroutine(task["description"])
+                out = ai.content
+            summary.append(f"{task['id']}: {out}")
+
+        return AIMessage(content="\n".join(summary))
 
     def run(self, message: HumanMessage):
-        """Sync convenience wrapper."""
         return asyncio.run(self.ainvoke(message))
