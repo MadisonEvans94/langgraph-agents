@@ -1,8 +1,9 @@
-""" CompositeAgent = PlanningAgent + OrchestratorAgent in one wrapper. """
+# agent_resources/agents/content_agent/composite_agent.py
 
 from __future__ import annotations
 import json
-from typing import List, Dict
+import asyncio
+from typing import Dict, List, Optional
 
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain.tools import BaseTool
@@ -14,62 +15,63 @@ from agent_resources.agents.content_agent.orchestrator_agent import Orchestrator
 
 class CompositeAgent(Agent):
     """
-    Composite agent that hides the plan‑then‑execute workflow
-    behind a single Agent interface (ainvoke / run).
+    Composite “query agent” that transparently does:
+      1. Plan with PlanningAgent
+      2. If tasks → execute with OrchestratorAgent
+      3. Else → return direct answer
     """
 
     def __init__(
         self,
         llm_configs: Dict[str, dict],
         *,
-        tools: List[BaseTool] = None,
+        tools: List[BaseTool] | None = None,
         memory=None,
         thread_id: str | None = None,
         use_llm_provider: bool = False,
         name: str = "composite_agent",
         **kwargs,
     ):
-        # base Agent initializer (sets .memory, .thread_id, etc.)
+        # initialize base Agent (sets .memory, .thread_id, etc.)
         super().__init__(**kwargs)
 
         self.name = name
-        self.tools = tools or []
         self.thread_id = thread_id or "default"
         self.llm_configs = llm_configs
         self.use_llm_provider = use_llm_provider
         self.memory = memory
 
-        # prepare sub‑agents
-        self.planner = PlanningAgent(
-            llm_configs=llm_configs,
-            tools=self.tools,
-            memory=memory,
-            thread_id=thread_id,
-            use_llm_provider=use_llm_provider,
-        )
+        # 1️⃣  Instantiate the orchestrator with the raw MCP tools
         self.orchestrator = OrchestratorAgent(
             llm_configs=llm_configs,
-            tools=self.tools,
+            tools=tools or [],
             memory=memory,
             thread_id=thread_id,
             use_llm_provider=use_llm_provider,
         )
 
-    # ------------------------------------------------------------------ #
-    # REQUIRED by Agent ­– composite agent never uses its own graph,
-    # so we return None to satisfy the abstract method contract.
-    # ------------------------------------------------------------------ #
+        # 2️⃣  Pass the *wrapped* orchestrator.tools into the planner
+        self.planner = PlanningAgent(
+            llm_configs=llm_configs,
+            tools=self.orchestrator.tools,
+            memory=memory,
+            thread_id=thread_id,
+            use_llm_provider=use_llm_provider,
+        )
+
+        # We don't need our own state_graph since we override ainvoke/run
+        self.state_graph = None
+
     def build_graph(self):
         return None
-
-    # ------------------------------------------------------------------ #
-    async def ainvoke(self, message: HumanMessage):
-        # 1) planning step
+    
+    async def ainvoke(self, message: HumanMessage) -> AIMessage:
+        # --- Step 1: Planning ---
         plan_msg = await self.planner.ainvoke(message)
         raw = plan_msg.content.strip()
 
-        # 2) detect if JSON task list or direct answer
-        tasks = None
+        # --- Step 2: Detect tasks vs direct answer ---
+        tasks: Optional[List[dict]] = None
         try:
             obj = json.loads(raw)
             if isinstance(obj, dict) and "tasks" in obj:
@@ -79,14 +81,12 @@ class CompositeAgent(Agent):
         except json.JSONDecodeError:
             pass
 
-        # 3) execute tasks if present
+        # --- Step 3: If tasks, orchestrate them; otherwise return direct ---
         if tasks:
-            result_msg = await self.orchestrator.process_tasks(tasks)
-            return result_msg
+            return await self.orchestrator.process_tasks(tasks)
 
-        # 4) return planner’s direct answer
         return AIMessage(content=raw)
 
-    def run(self, message: HumanMessage):
-        # Default Agent.run() relies on state_graph, so override to use ainvoke
-        return self.loop.run_until_complete(self.ainvoke(message))
+    def run(self, message: HumanMessage) -> AIMessage:
+        # Synchronous helper for convenience
+        return asyncio.run(self.ainvoke(message))

@@ -1,4 +1,5 @@
 # agent_resources/agents/content_agent/planning_agent.py
+
 from __future__ import annotations
 import logging
 from typing import Dict, List
@@ -8,35 +9,14 @@ from langchain.tools import Tool
 from langgraph.prebuilt import create_react_agent
 
 from agent_resources.base_agent import Agent
-from agent_resources.prompts import REACT_AGENT_SYSTEM_PROMPT
+from agent_resources.prompts import PLANNING_AGENT_SYSTEM_PROMPT
 from agent_resources.state_types import OrchestratorState
 
 logger = logging.getLogger(__name__)
 
-# --------------------------------------------------------------------------- #
-# Prompt template
-# --------------------------------------------------------------------------- #
-PLANNER_PROMPT = REACT_AGENT_SYSTEM_PROMPT + """
-You are a planning assistant.
-
-• If the user's query can be answered with a direct answer, do so and finish.
-
-• If the query requires multiple steps or external tool calls, OUTPUT ONLY a
-  JSON array of task objects with these keys:
-
-  - "id":        a string starting at "1"
-  - "description": an imperative sentence describing the task
-
-DO NOT include an "assigned_to" field.
-"""
-
-# --------------------------------------------------------------------------- #
-# Agent class
-# --------------------------------------------------------------------------- #
 class PlanningAgent(Agent):
     """
-    Either returns a direct answer, or emits a JSON task list that the
-    Orchestrator can later route to sub‑agents.
+    Agent that either answers directly or emits a JSON task list for decomposition.
     """
 
     def __init__(
@@ -50,41 +30,44 @@ class PlanningAgent(Agent):
         name: str = "planning_agent",
         **kwargs,
     ):
-        # NOTE: the base Agent.__init__ (via super()) does NOT expect extra kwargs.
-        # We therefore call it with **kwargs (empty by default) like the other agents.
         super().__init__(**kwargs)
-
-        # ---- custom init ----
         self.name = name
         self.use_llm_provider = use_llm_provider
-        self.tools = tools or []          # planner uses no external tools, but keep field
-        self._build_llm_dict(llm_configs) # sets self.llm_dict
+        self.tools = tools or []
+        self._build_llm_dict(llm_configs)
         self.memory = memory
         self.thread_id = thread_id or "default"
-
         self.state_graph = self.build_graph()
 
-    # ------------------------------------------------------------------ #
-    # Graph construction
-    # ------------------------------------------------------------------ #
     def _build_system_prompt(self) -> str:
-        return PLANNER_PROMPT
+        # Build dynamic lists for both placeholders
+        tools_section = "\n".join(
+            f"• {t.name}: {t.description or 'no description'}"
+            for t in self.tools
+        ) or "• (no tools registered)"
+
+        tool_catalog = "\n".join(
+            f"• {t.name}"
+            for t in self.tools
+        ) or "• (no tools registered)"
+
+        return PLANNING_AGENT_SYSTEM_PROMPT.format(
+            tools_section=tools_section,
+            tool_catalog=tool_catalog,
+        )
 
     def build_graph(self):
         llm = self.llm_dict["default_llm"]
         prompt = SystemMessage(content=self._build_system_prompt())
         return create_react_agent(
             llm,
-            tools=[],                 # planner itself calls no tools
+            tools=[],
             prompt=prompt,
             checkpointer=self.memory,
             name=self.name,
-            state_schema=OrchestratorState,  # keeps messages if caller cares
+            state_schema=OrchestratorState,
         )
 
-    # ------------------------------------------------------------------ #
-    # Public helpers
-    # ------------------------------------------------------------------ #
     async def ainvoke(self, message: HumanMessage):
         resp = await self.state_graph.ainvoke(
             {"messages": [message]},

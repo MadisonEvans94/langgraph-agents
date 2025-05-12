@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class OrchestratorAgent(Agent):
     """
-    Supervisor agent that routes user queries to sub-agents, and can
+    Supervisor agent that routes user queries to sub-agents and can
     drain a pre-seeded `tasks` queue via `process_tasks`.
     """
 
@@ -42,13 +42,13 @@ class OrchestratorAgent(Agent):
         self._llm_configs = llm_configs
         self.memory = memory
         self.thread_id = thread_id or "default"
-        # compile the fallback ReAct graph
+        # compile the dynamic ReAct graph
         self.state_graph = self.build_graph()
 
     def build_graph(self):
         llm = self.llm_dict["default_llm"]
 
-        # Wrap math_agent as a tool
+        # 1️⃣ Wrap math sub-agent as a Tool
         math_tools = [t for t in self.tools if t.name in {"add", "multiply", "fibonacci"}]
         math_agent = MathAgent(
             llm_configs={"default_llm": self._llm_configs["default_llm"]},
@@ -62,7 +62,7 @@ class OrchestratorAgent(Agent):
             coroutine=lambda q: math_agent.ainvoke(HumanMessage(content=q)),
         )
 
-        # Wrap web_search_agent as a tool
+        # 2️⃣ Wrap web search sub-agent as a Tool
         web_tools = [t for t in self.tools if t.name == "web_search"]
         web_agent = WebSearchAgent(
             llm_configs={"default_llm": self._llm_configs["default_llm"]},
@@ -76,68 +76,75 @@ class OrchestratorAgent(Agent):
             coroutine=lambda q: web_agent.ainvoke(HumanMessage(content=q)),
         )
 
-        # Set self.tools to the wrapped agent tools so process_tasks finds them
+        # 3️⃣ Replace self.tools with the wrapped tools
         self.tools = [math_tool, web_tool]
 
-        # Build system prompt listing the two sub-tools
-        tools_section = "\n".join(
-            f"{i}. {t.name}: {t.description}"
-            for i, t in enumerate([math_tool, web_tool], start=1)
-        )
-        orchestrator_prompt = SystemMessage(
-            content=ORCHESTRATOR_AGENT_SYSTEM_PROMPT.format(tools_section=tools_section)
+        # 4️⃣ Build tools_section and tool_catalog for the system prompt
+        tools_section = "\n".join(f"• {t.name}: {t.description}" for t in self.tools)
+        tool_catalog = tools_section  # or build separately if desired
+
+        system = SystemMessage(
+            content=ORCHESTRATOR_AGENT_SYSTEM_PROMPT.format(
+                tools_section=tools_section,
+                tool_catalog=tool_catalog,
+            )
         )
 
+        # 5️⃣ Create the ReAct agent with dynamic prompt and wrapped tools
         return create_react_agent(
             llm,
-            tools=[math_tool, web_tool],
+            tools=self.tools,
             checkpointer=self.memory,
-            prompt=orchestrator_prompt,
+            prompt=system,
             name=self.name,
-            state_schema=OrchestratorState,  # declare custom state
+            state_schema=OrchestratorState,
         )
 
-    async def ainvoke(self, message: HumanMessage):
+    async def ainvoke(self, message: HumanMessage) -> AIMessage:
         """
-        Fallback to ReAct if no tasks are pre-seeded.
+        Fallback into ReAct if no tasks are pre-seeded.
         """
-        # If tasks exist in state, ReAct won't see them—use process_tasks instead.
-        return (await self.state_graph.ainvoke(
+        out = await self.state_graph.ainvoke(
             {"messages": [message]},
             config=self._default_config(),
-        ))["messages"][-1]
+        )
+        return out["messages"][-1]
 
     async def process_tasks(self, tasks: List[dict]) -> AIMessage:
         """
-        Execute tasks without using ReAct to dodge the new OpenAI tool‑call
-        format.  Heuristic:
-          • math keywords / digits -> math_agent
-          • otherwise              -> web_search_agent
+        Execute a list of tasks concurrently.
+
+        • If task has 'assigned_to', use that tool.
+        • Otherwise, heuristically pick math_agent vs web_search_agent.
         """
-        summary = []
-        for task in tasks:
+        async def _run_task(task: dict) -> str:
             desc = task["description"]
 
-            # heuristic router
-            if any(tok in desc.lower() for tok in ["add", "sum", "multiply", "+", "-", "*", "fibonacci"]) \
-               or any(char.isdigit() for char in desc):
+            # determine which tool to call
+            if "assigned_to" in task:
+                tool_name = task["assigned_to"]
+            elif any(tok in desc.lower() for tok in ["add", "sum", "multiply", "+", "-", "*", "fibonacci"]) \
+                 or any(char.isdigit() for char in desc):
                 tool_name = "math_agent"
             else:
                 tool_name = "web_search_agent"
 
-            # explicit routing still wins if provided
-            if "assigned_to" in task:
-                tool_name = task["assigned_to"]
-
             tool = next((t for t in self.tools if t.name == tool_name), None)
             if not tool:
-                result = f"[Error: no tool {tool_name}]"
-            else:
+                return f"{task['id']}: [Error: no tool {tool_name}]"
+
+            try:
                 ai = await tool.coroutine(desc)
                 result = ai.content
+            except Exception as e:
+                result = f"[Tool error: {e}]"
 
-            summary.append(f"{task['id']}: {result}")
+            return f"{task['id']}: {result}"
 
-        return AIMessage(content="\n".join(summary))
-    def run(self, message: HumanMessage):
+        # run all tasks in parallel and aggregate
+        results = await asyncio.gather(*[_run_task(t) for t in tasks])
+        return AIMessage(content="\n".join(results))
+
+    def run(self, message: HumanMessage) -> AIMessage:
+        # synchronous convenience
         return asyncio.run(self.ainvoke(message))
