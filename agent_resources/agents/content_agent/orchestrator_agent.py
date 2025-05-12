@@ -107,22 +107,37 @@ class OrchestratorAgent(Agent):
             config=self._default_config(),
         ))["messages"][-1]
 
-    async def process_tasks(self, tasks: List[Task]) -> AIMessage:
+    async def process_tasks(self, tasks: List[dict]) -> AIMessage:
         """
-        Drain & process the given list of tasks in pure Python,
-        invoking each tool.coroutine, then summarize results.
+        Execute tasks without using ReAct to dodge the new OpenAI tool‑call
+        format.  Heuristic:
+          • math keywords / digits -> math_agent
+          • otherwise              -> web_search_agent
         """
         summary = []
         for task in tasks:
-            tool = next((t for t in self.tools if t.name == task["assigned_to"]), None)
-            if not tool:
-                out = f"[Error: no tool {task['assigned_to']}]"
+            desc = task["description"]
+
+            # heuristic router
+            if any(tok in desc.lower() for tok in ["add", "sum", "multiply", "+", "-", "*", "fibonacci"]) \
+               or any(char.isdigit() for char in desc):
+                tool_name = "math_agent"
             else:
-                ai = await tool.coroutine(task["description"])
-                out = ai.content
-            summary.append(f"{task['id']}: {out}")
+                tool_name = "web_search_agent"
+
+            # explicit routing still wins if provided
+            if "assigned_to" in task:
+                tool_name = task["assigned_to"]
+
+            tool = next((t for t in self.tools if t.name == tool_name), None)
+            if not tool:
+                result = f"[Error: no tool {tool_name}]"
+            else:
+                ai = await tool.coroutine(desc)
+                result = ai.content
+
+            summary.append(f"{task['id']}: {result}")
 
         return AIMessage(content="\n".join(summary))
-
     def run(self, message: HumanMessage):
         return asyncio.run(self.ainvoke(message))

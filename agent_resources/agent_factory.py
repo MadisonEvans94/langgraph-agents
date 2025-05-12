@@ -6,6 +6,8 @@ import uuid
 from langgraph.checkpoint.memory import MemorySaver
 from langchain.tools import BaseTool
 
+from .agents.content_agent.composite_agent import CompositeAgent
+
 from .agents.content_agent.orchestrator_agent import OrchestratorAgent
 from .agents.content_agent.planning_agent import PlanningAgent
 from .agents.react_agent.react_agent import ReactAgent
@@ -23,6 +25,7 @@ class AgentFactory:
             "conversational_agent": ConversationalAgent,
             "react_agent": ReactAgent,
             "orchestrator_agent": OrchestratorAgent,
+            "composite_agent": CompositeAgent, 
             "planning_agent": PlanningAgent,   # <-- newly registered
         }
 
