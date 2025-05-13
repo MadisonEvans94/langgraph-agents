@@ -52,11 +52,13 @@ class Agent(ABC):
         pass
 
     def _default_config(self) -> dict:
+        if self.memory is None:
+            return {}
         return {
             "configurable": {
                 "thread_id": self.thread_id,
-                "checkpoint_ns": self.name,      # e.g. "orchestrator"
-                "checkpoint_id": self.thread_id  # or any per-session identifier
+                "checkpoint_ns": self.name,
+                "checkpoint_id": self.thread_id
             }
         }
 

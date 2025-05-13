@@ -1,6 +1,20 @@
 # agent_resources/agents/task_workflow/orchestrator_agent.py
+"""
+OrchestratorAgent
+─────────────────
+• Wraps MathAgent and WebSearchAgent as LangChain Tools.
+• Each sub‑agent only sees the MCP tools it needs.
+• CompositeAgent (and PlanningAgent) rely on .tools, so we set it
+  at construction time.
+• build_graph() keeps the zero‑arg signature expected by the rest of
+  the code‑base; a private _make_graph(checkpointer) does the real work.
+• process_tasks() uses simple semantic rules to pick the correct tool
+  and invokes it directly, avoiding “role='tool' must follow 'tool_calls'”
+  API errors.
+"""
 
 from __future__ import annotations
+
 import asyncio
 import logging
 from typing import Dict, List, Optional
@@ -17,12 +31,13 @@ from agent_resources.state_types import OrchestratorState, Task
 
 logger = logging.getLogger(__name__)
 
+
 class OrchestratorAgent(Agent):
     """
-    Supervisor agent that routes user queries to sub-agents and can
-    drain a pre-seeded `tasks` queue via `process_tasks`.
+    Supervisor agent that routes tasks to sub‑agents.
     """
 
+    # ───────────────────────── constructor ──────────────────────────
     def __init__(
         self,
         llm_configs: Dict[str, dict],
@@ -35,76 +50,90 @@ class OrchestratorAgent(Agent):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        # Ensure use_llm_provider is set before building the LLM dict
         self.use_llm_provider = use_llm_provider
         self._build_llm_dict(llm_configs)
+
         self.name = name
         self._llm_configs = llm_configs
         self.memory = memory
         self.thread_id = thread_id or "default"
 
-        # Raw MCP tools; we'll wrap these next
+        # Raw MCP tools (add, multiply, fibonacci, web_search, …)
         self._raw_tools = tools or []
 
-        # Build the dynamic ReAct graph and wrap tools
+        # Build the memory‑enabled graph for normal user queries
         self.state_graph = self.build_graph()
 
-    def build_graph(self):
+    # ───────────────────────── graph builders ───────────────────────
+    def _make_graph(self, checkpointer):
+        """
+        Centralised graph constructor – pass checkpointer=None for
+        a completely stateless version (used inside process_tasks).
+        """
         llm = self.llm_dict["default_llm"]
 
-        # Wrap math sub-agent as a Tool
+        # Split MCP tools for each sub‑agent
+        math_tools   = [t for t in self._raw_tools if t.name in {"add", "multiply", "fibonacci"}]
+        search_tools = [t for t in self._raw_tools if t.name == "web_search"]
+
+        # MathAgent tool‑wrapper
         math_agent = MathAgent(
             llm_configs=self._llm_configs,
-            tools=self._raw_tools,
+            tools=math_tools,
             use_llm_provider=self.use_llm_provider,
+            memory=None,          # stateless
         )
         math_tool = Tool(
             name="math_agent",
             description="Handle arithmetic and numerical computations.",
-            func=lambda q: asyncio.run(math_agent.ainvoke(HumanMessage(content=q))).content,
+            func=lambda q: asyncio.run(
+                math_agent.ainvoke(HumanMessage(content=q))
+            ).content,
             coroutine=lambda q: math_agent.ainvoke(HumanMessage(content=q)),
         )
 
-        # Wrap web-search sub-agent as a Tool
+        # WebSearchAgent tool‑wrapper
         web_agent = WebSearchAgent(
             llm_configs=self._llm_configs,
-            tools=self._raw_tools,
+            tools=search_tools,
             use_llm_provider=self.use_llm_provider,
+            memory=None,          # stateless
         )
         web_tool = Tool(
             name="web_search_agent",
-            description="Retrieve factual information and real time data via web search.",
-            func=lambda q: asyncio.run(web_agent.ainvoke(HumanMessage(content=q))).content,
+            description="Retrieve factual information and real‑time data via web search.",
+            func=lambda q: asyncio.run(
+                web_agent.ainvoke(HumanMessage(content=q))
+            ).content,
             coroutine=lambda q: web_agent.ainvoke(HumanMessage(content=q)),
         )
 
-        # Replace self.tools with the wrapped tools
+        # Expose both wrapped tools
         self.tools = [math_tool, web_tool]
-
-        # Build dynamic prompt sections
-        tools_section = "\n".join(f"• {t.name}: {t.description}" for t in self.tools)
-        tool_catalog = tools_section
 
         system = SystemMessage(
             content=ORCHESTRATOR_AGENT_SYSTEM_PROMPT.format(
-                tools_section=tools_section,
-                tool_catalog=tool_catalog,
+                tools_section="\n".join(f"• {t.name}: {t.description}" for t in self.tools),
+                tool_catalog="\n".join(f"• {t.name}" for t in self.tools),
             )
         )
 
         return create_react_agent(
             llm,
             tools=self.tools,
-            checkpointer=self.memory,
             prompt=system,
+            checkpointer=checkpointer,
             name=self.name,
             state_schema=OrchestratorState,
         )
 
+    def build_graph(self):
+        """Zero‑arg wrapper retained for external callers."""
+        return self._make_graph(checkpointer=self.memory)
+
+    # ───────────────────────── public entrypoints ───────────────────
     async def ainvoke(self, message: HumanMessage) -> AIMessage:
-        """
-        Default React-based invocation when no pre-defined tasks are provided.
-        """
+        """Handle a free‑form user query (no explicit tasks)."""
         out = await self.state_graph.ainvoke(
             {"messages": [message]},
             config=self._default_config(),
@@ -113,26 +142,30 @@ class OrchestratorAgent(Agent):
 
     async def process_tasks(self, tasks: List[Task]) -> AIMessage:
         """
-        Execute a list of Task dicts by directly invoking the matching tool.
-
-        - If 'assigned_to' is present, use that tool.
-        - Otherwise, attempt to match based on tool names.
+        For each task, pick the correct sub‑agent tool with simple
+        semantic rules and invoke it directly.
         """
         results: List[str] = []
 
-        for task in tasks:
-            desc = task["description"]
-            # Determine tool name:
-            tool_name: Optional[str] = task.get("assigned_to")
-            if not tool_name:
-                # Fallback: pick first tool whose name appears in the description
-                for t in self.tools:
-                    if t.name in desc.lower():
-                        tool_name = t.name
-                        break
+        # Build a stateless graph once (ensures .tools is populated)
+        self._make_graph(checkpointer=None)
 
-            # Default to the first tool if still unresolved
-            if not tool_name and self.tools:
+        for task in tasks:
+            desc_lc = task["description"].lower()
+
+            # 1️⃣ explicit assignment wins
+            tool_name: Optional[str] = task.get("assigned_to")
+
+            # 2️⃣ semantic routing
+            if not tool_name:
+                if any(kw in desc_lc for kw in ["weather", "temperature", "forecast", "humidity", "wind"]):
+                    tool_name = "web_search_agent"
+                elif any(sym in desc_lc for sym in ["+", "-", "*", "×", "x", "divide", "multiply",
+                                                    "add", "subtract", "fibonacci", "calculate"]):
+                    tool_name = "math_agent"
+
+            # 3️⃣ fallback to first registered tool
+            if not tool_name:
                 tool_name = self.tools[0].name
 
             tool = next((t for t in self.tools if t.name == tool_name), None)
@@ -140,15 +173,16 @@ class OrchestratorAgent(Agent):
                 result = f"[Error: no tool named {tool_name}]"
             else:
                 try:
-                    ai = await tool.coroutine(desc)
+                    ai = await tool.coroutine(task["description"])
                     result = ai.content
                 except Exception as e:
+                    logger.error("Tool %s error: %s", tool.name, e, exc_info=True)
                     result = f"[Tool error: {e}]"
 
             results.append(f"{task['id']}: {result}")
 
         return AIMessage(content="\n".join(results))
 
+    # Sync helper
     def run(self, message: HumanMessage) -> AIMessage:
-        # synchronous convenience
         return asyncio.run(self.ainvoke(message))
