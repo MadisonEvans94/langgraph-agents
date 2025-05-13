@@ -7,7 +7,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.prebuilt import create_react_agent
 from agent_resources.base_agent import Agent
 from agent_resources.agents.math_agent import MathAgent
-from agent_resources.agents.web_search_agent import WebSearchAgent
+from agent_resources.web_search_agent import WebSearchAgent
 from agent_resources.prompts import REACT_AGENT_SYSTEM_PROMPT
 
 logger = logging.getLogger(__name__)

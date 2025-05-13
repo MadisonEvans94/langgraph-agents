@@ -1,25 +1,32 @@
+# agent_resources/agent_factory.py
+
 from typing import Dict, Type, Optional, List
+import uuid
+
 from langgraph.checkpoint.memory import MemorySaver
+from langchain.tools import BaseTool
+
+from .agents.task_workflow.composite_agent import CompositeAgent
+
+from .agents.task_workflow.orchestrator_agent import OrchestratorAgent
+from .agents.task_workflow.planning_agent import PlanningAgent
 from .agents.react_agent.react_agent import ReactAgent
 from .agents.conversational_agent_with_routing.conversational_agent_with_routing import ConversationalAgentWithRouting
-from agent_resources.base_agent import Agent
 from .agents.conversational_agent.conversational_agent import ConversationalAgent
-import uuid
-from langchain.tools import BaseTool
-from .agents.orchestrator.orchestrator_agent import OrchestratorAgent
+from agent_resources.base_agent import Agent
 
 class AgentFactory:
     """
-    Factory class for creating agents with shared configurations.
-    Handles MCP and non-MCP agents.
+    Factory for creating named agents with shared memory and tool lists.
     """
     def __init__(self, memory: MemorySaver):
         self.memory = memory
         self.agent_registry: Dict[str, Type[Agent]] = {
             "conversational_agent": ConversationalAgent,
-            # "conversational_agent_with_routing": ConversationalAgentWithRouting,
-            "react_agent": ReactAgent, 
-            "orchestrator_agent": OrchestratorAgent
+            "react_agent": ReactAgent,
+            "orchestrator_agent": OrchestratorAgent,
+            "composite_agent": CompositeAgent, 
+            "planning_agent": PlanningAgent,   # <-- newly registered
         }
 
     def factory(
@@ -30,15 +37,10 @@ class AgentFactory:
         tools: List[BaseTool] = [],
         **kwargs
     ) -> Agent:
-        """
-        Create an agent instance.
-        `use_llm_provider` selects whether to use the configured LLM backend.
-        """
         agent_class = self.agent_registry.get(agent_type)
         if agent_class is None:
             raise ValueError(f"Unknown agent type: {agent_type}")
 
-        # Assign persistent memory and thread ID
         thread_id = thread_id or str(uuid.uuid4())
         return agent_class(
             memory=self.memory,

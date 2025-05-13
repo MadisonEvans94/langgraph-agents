@@ -13,6 +13,9 @@ from agent_resources.agent_factory import AgentFactory
 from .models import QueryRequest, QueryResponse
 from .utils import load_llm_configs
 from langgraph.checkpoint.memory import MemorySaver
+from typing import List
+from agent_resources.state_types import Task
+from langchain_core.messages import AIMessage
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -92,6 +95,22 @@ async def ask(request: QueryRequest):
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.post("/run_tasks")
+async def run_tasks(tasks: List[Task]):
+    """
+    Accepts a JSON array of Task objects and returns the aggregated result.
+    """
+    agent = agent_factory.factory(
+        agent_type="orchestrator_agent",
+        thread_id=str(uuid.uuid4()),
+        use_llm_provider=USE_LLM_PROVIDER,
+        llm_configs=llm_configs,
+        tools=app.state.tools,
+    )
+    ai_msg: AIMessage = await agent.process_tasks(tasks)
+    return {"result": ai_msg.content}
 
 if __name__ == "__main__":
     import uvicorn
