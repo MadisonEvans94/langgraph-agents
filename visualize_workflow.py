@@ -11,7 +11,11 @@ from agent_service.app.utils import load_llm_configs
 
 logger = logging.getLogger(__name__)
 load_dotenv()
-llm_configs = load_llm_configs()
+full_llm_configs = load_llm_configs(config_path="config.yaml")
+# select the OpenAI configs for the visualization
+llm_configs = full_llm_configs.get("openai")
+if llm_configs is None:
+    raise KeyError("Could not find 'openai' entry in full_llm_configs")
 
 async def main():
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -30,10 +34,10 @@ async def main():
     selected_agent_type = prompt_user_for_agent(available_agents)
 
     try:
-        agent = await agent_factory.factory(
+        agent = agent_factory.factory(
             selected_agent_type,
             llm_configs=llm_configs,
-            use_openai=True, 
+            use_llm_provider=True,
             use_mcp=False
         )
         logger.info(f"Instantiated agent: {selected_agent_type}")

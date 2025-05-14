@@ -6,8 +6,7 @@ import asyncio
 from typing import Dict, List
 
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
-from langgraph.graph import StateGraph, START, END
-from langgraph.prebuilt.chat_agent_executor import create_react_agent
+from langgraph_supervisor import create_supervisor
 from langgraph_supervisor.handoff import create_handoff_tool
 
 from agent_resources.base_agent import Agent
@@ -20,10 +19,10 @@ logger = logging.getLogger(__name__)
 
 class SupervisorAgent(Agent):
     """
-    Custom supervisor that:
-      1) Runs PlanningAgent to break the user query into tasks
-      2) Runs a ReAct‐style supervisor loop to dispatch each task
-      3) Aggregates results and returns the final answer
+    SupervisorAgent that:
+      1) Plans first (via PlanningAgent)
+      2) Uses the built‐in create_supervisor loop
+      3) Aggregates all task results and returns the final answer
     """
     def __init__(
         self,
@@ -37,26 +36,19 @@ class SupervisorAgent(Agent):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        self.llm_configs = llm_configs
+        self.llm_configs      = llm_configs
         self.use_llm_provider = use_llm_provider
         self._build_llm_dict(llm_configs)
-        self.tools = tools or []
-        self.memory = memory
-        self.thread_id = thread_id or "default"
-        self.name = name
+        self.tools            = tools or []
+        self.memory           = memory
+        self.thread_id        = thread_id or "default"
+        self.name             = name
 
         # Build & compile the orchestrator graph once
         self.state_graph = self.build_graph().compile()
 
-    def build_graph(self) -> StateGraph:
-        # 1) Instantiate your three agents
-        planning_agent = PlanningAgent(
-            llm_configs=self.llm_configs,
-            memory=self.memory,
-            thread_id=self.thread_id,
-            use_llm_provider=self.use_llm_provider,
-            name="planning_agent",
-        )
+    def build_graph(self):
+        # 1) Instantiate your sub-agents
         math_agent = MathAgent(
             llm_configs=self.llm_configs,
             tools=[t for t in self.tools if t.name in ("add", "multiply", "fibonacci")],
@@ -74,71 +66,65 @@ class SupervisorAgent(Agent):
             name="web_search_agent",
         )
 
-        # 2) Create handoff tools for supervisor to call
+        # 2) Create the hand-off tools for those agents
         handoff_tools = [
-            create_handoff_tool(agent_name=planning_agent.name),
             create_handoff_tool(agent_name=math_agent.name),
             create_handoff_tool(agent_name=web_agent.name),
         ]
 
-        # 3) Bind the tools into your supervisor LLM
+        # 3) (Optional) If your LLM requires explicit binding for function calling:
         llm = self.llm_dict["default_llm"]
         if hasattr(llm, "bind_tools"):
             llm = llm.bind_tools(handoff_tools)
 
-        # 4) Build the supervisor’s ReAct node
+        # 4) Prompt that drives the loop & dispatch
         supervisor_prompt = SystemMessage(content=(
-"""You are the supervisor. You have a list of tasks in state['tasks'], each with id, description, status, and result.
-
-On each turn:
-- If there is any task whose status is "pending", pick the next pending task and call the matching tool (`transfer_to_math_agent` or `transfer_to_web_search_agent`) with the task description.
-- If all tasks have status "done", produce the final assistant answer **without** calling any tools.
-"""
+            "You are the supervisor.  You have a list of tasks in state['tasks'],\n"
+            "each with 'id', 'description', 'status', and 'result'.\n\n"
+            "On each turn:\n"
+            "  - If any task.status == 'pending', call the matching tool:\n"
+            "      • transfer_to_math_agent({'task_id':id,'task_description':description})\n"
+            "      • transfer_to_web_search_agent({…})\n"
+            "    then mark that task 'in_progress'.\n"
+            "  - When control returns, write the tool’s response into task.result and mark 'done'.\n"
+            "  - Repeat until *all* tasks have status 'done'.\n"
+            "  - Finally, output one assistant message summarizing each task and its result."
         ))
-        supervisor_react = create_react_agent(
-            name="supervisor",
-            model=llm,
-            tools=handoff_tools,
-            prompt=supervisor_prompt,
-            state_schema=OrchestratorState,
+
+        # 5) Build & return the supervisor StateGraph
+        return create_supervisor(
+            agents         = [math_agent.state_graph, web_agent.state_graph],
+            model          = llm,
+            tools          = handoff_tools,          # <–– THIS is the fix
+            prompt         = supervisor_prompt,
+            state_schema   = OrchestratorState,      # so it carries `tasks`
+            supervisor_name= self.name,
         )
-
-        # 5) Wire up the StateGraph
-        builder = StateGraph(state_schema=OrchestratorState)
-
-        # Start → PlanningAgent
-        builder.add_node(planning_agent.state_graph, destinations=(supervisor_react.name,))
-        builder.add_edge(START, planning_agent.state_graph.name)
-
-        # PlanningAgent → Supervisor
-        builder.add_node(
-            supervisor_react,
-            destinations=(math_agent.name, web_agent.name, END),
-        )
-        builder.add_edge(planning_agent.state_graph.name, supervisor_react.name)
-
-        # MathAgent → Supervisor (return only)
-        builder.add_node(math_agent.state_graph, destinations=(supervisor_react.name,))
-        builder.add_edge(math_agent.state_graph.name, supervisor_react.name)
-
-        # WebSearchAgent → Supervisor (return only)
-        builder.add_node(web_agent.state_graph, destinations=(supervisor_react.name,))
-        builder.add_edge(web_agent.state_graph.name, supervisor_react.name)
-
-        return builder
 
     async def ainvoke(self, message: HumanMessage) -> AIMessage:
         logger.info("SupervisorAgent received → %s", message.content)
-        initial_state = {"messages": [message], "tasks": []}
+
+        # A) Plan first, outside the main graph
+        planner = PlanningAgent(
+            llm_configs     = self.llm_configs,
+            memory          = self.memory,
+            thread_id       = self.thread_id,
+            use_llm_provider= self.use_llm_provider,
+            name            = "planning_agent",
+        )
+        plan_result = await planner.ainvoke(message)
+        tasks       = plan_result.get("tasks", [])
+
+        # B) Seed the supervisor graph with that task list
+        initial_state = {"messages": [message], "tasks": tasks}
         resp = await self.state_graph.ainvoke(
             initial_state,
             config=self._default_config(),
         )
 
+        # C) Return the final assistant message
         last = resp["messages"][-1]
-        if isinstance(last, AIMessage):
-            return last
-        return AIMessage(content=getattr(last, "content", str(last)))
+        return last if isinstance(last, AIMessage) else AIMessage(content=str(last))
 
     def run(self, message: HumanMessage) -> AIMessage:
         return asyncio.run(self.ainvoke(message))

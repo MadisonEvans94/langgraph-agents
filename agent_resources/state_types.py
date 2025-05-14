@@ -1,7 +1,7 @@
 # agent_resources/state_types.py
+
 from typing import List, Literal, Optional
 from typing_extensions import Annotated, TypedDict
-from langgraph.graph.message import MessagesState
 from langgraph.managed import IsLastStep, RemainingSteps
 from langgraph.graph.message import add_messages
 from langchain_core.messages import BaseMessage
@@ -17,10 +17,11 @@ class Task(TypedDict):
 class OrchestratorState(TypedDict):
     """
     Custom state schema for the orchestrator:
-      - default message‐loop fields
+      - default message-loop fields
       - adds a `tasks` list of Task objects
     """
-    messages: List[BaseMessage]                # annotated by add_messages reducer
+    # Now accepts multiple writes per step
+    messages: Annotated[List[BaseMessage], add_messages]
     is_last_step: IsLastStep
     remaining_steps: RemainingSteps
     tasks: List[Task]
