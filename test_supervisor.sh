@@ -11,4 +11,8 @@ curl -s -X POST http://localhost:8001/invoke \
   -d "$(jq -n \
         --arg uq "$QUERY" \
         '{agent_type:"supervisor_agent", thread_id:null, user_query:$uq}')" \
-| jq
+| jq -r '
+  "\u001b[1;95m🧠 Final Response:\u001b[0m\n\n" +
+  .response + "\n\n" +
+  "\u001b[1;94m📎 Thread ID:\u001b[0m " + .thread_id
+'
