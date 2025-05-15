@@ -16,11 +16,6 @@ class Agent(ABC):
     """
 
     def visualize_workflow(self, save_path: str = None):
-        """
-        Visualize the agent's workflow. Optionally save the visualization as an image.
-
-        :param save_path: Optional path to save the image.
-        """
         graph_image = self.state_graph.get_graph().draw_mermaid_png(
             draw_method=MermaidDrawMethod.API
         )
@@ -34,38 +29,22 @@ class Agent(ABC):
     def _build_llm_dict(self, llm_configs: Dict[str, dict]):
         if llm_configs is None:
             raise ValueError("llm_configs cannot be None.")
-        # enforce you have at least a default
         if "default_llm" not in llm_configs:
             raise ValueError("Missing required LLM config: 'default_llm'.")
         llm_dict = {
             name: make_llm(cfg, self.use_llm_provider)
             for name, cfg in llm_configs.items()
         }
-        logger.info(f"Built LLM dictionary: {list(llm_dict.keys())}")
         self.llm_dict = llm_dict
 
     @abstractmethod
     def build_graph(self):
-        """
-        Compile the LangGraph state‐graph and return an executable graph object.
-        """
         pass
 
     def _default_config(self) -> dict:
-        if self.memory is None:
-            return {}
-        return {
-            "configurable": {
-                "thread_id": self.thread_id,
-                "checkpoint_ns": self.name,
-                "checkpoint_id": self.thread_id
-            }
-        }
+        return {"configurable": {"thread_id": self.thread_id}}
 
     def invoke(self, message, **kwargs) -> AIMessage:
-        """
-        Sync entrypoint: run the graph, return the final AIMessage.
-        """
         try:
             resp = self.state_graph.invoke(
                 {"messages": [message]},
@@ -80,9 +59,6 @@ class Agent(ABC):
             return AIMessage(content="Sorry, I hit an error.")
 
     def stream(self, message, modes=None):
-        """
-        Sync streaming entrypoint: yields updates and/or token messages.
-        """
         try:
             return self.state_graph.stream(
                 {"messages": [message]},
@@ -104,9 +80,6 @@ class Agent(ABC):
         )
 
     async def ainvoke(self, message) -> AIMessage:
-        """
-        Async entrypoint: run the graph, return the final AIMessage.
-        """
         try:
             resp = await self.state_graph.ainvoke(
                 {"messages": [message]},

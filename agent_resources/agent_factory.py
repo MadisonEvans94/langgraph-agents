@@ -5,14 +5,10 @@ import uuid
 
 from langgraph.checkpoint.memory import MemorySaver
 from langchain.tools import BaseTool
-
-from .agents.task_workflow.composite_agent import CompositeAgent
-
-from .agents.task_workflow.orchestrator_agent import OrchestratorAgent
-from .agents.task_workflow.planning_agent import PlanningAgent
+from .agents.supervisor.supervisor import SupervisorAgent   
 from .agents.react_agent.react_agent import ReactAgent
-from .agents.conversational_agent_with_routing.conversational_agent_with_routing import ConversationalAgentWithRouting
 from .agents.conversational_agent.conversational_agent import ConversationalAgent
+
 from agent_resources.base_agent import Agent
 
 class AgentFactory:
@@ -24,9 +20,7 @@ class AgentFactory:
         self.agent_registry: Dict[str, Type[Agent]] = {
             "conversational_agent": ConversationalAgent,
             "react_agent": ReactAgent,
-            "orchestrator_agent": OrchestratorAgent,
-            "composite_agent": CompositeAgent, 
-            "planning_agent": PlanningAgent,   # <-- newly registered
+            "supervisor_agent": SupervisorAgent,  
         }
 
     def factory(

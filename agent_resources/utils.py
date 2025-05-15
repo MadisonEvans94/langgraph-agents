@@ -37,7 +37,7 @@ class ChatVLLMWrapper:
         self.bound_tools = None
 
         logger.info(
-            f"🚀 ChatVLLMWrapper initialized | model={model}, streaming={streaming}, "
+            f"ChatVLLMWrapper initialized | model={model}, streaming={streaming}, "
             f"max_new_tokens={max_new_tokens}, temp={temperature}, top_p={top_p}, rep_penalty={repetition_penalty}"
         )
 
@@ -79,18 +79,18 @@ class ChatVLLMWrapper:
             params["functions"] = self._convert_tools_to_functions()
 
         if not self.streaming:
-            logger.info(f"🟢 [ChatVLLMWrapper] Invoking (non-stream) with parameters: {params}")
+            logger.info(f"[ChatVLLMWrapper] Invoking (non-stream) with parameters: {params}")
             try:
                 response = self.client.chat.completions.create(**params)
-                logger.info(f"✅ Received non-stream response: {response}")
+                logger.info(f"Received non-stream response: {response}")
                 content = response.choices[0].message.content
-                logger.info(f"✅ Extracted content (first 50 chars): {content[:50]!r}")
+                logger.info(f"Extracted content (first 50 chars): {content[:50]!r}")
                 return AIMessage(content=content.strip() if content else "")
             except Exception as e:
-                logger.error(f"❌ Error during non-stream invocation: {e}", exc_info=True)
+                logger.error(f"Error during non-stream invocation: {e}", exc_info=True)
                 raise
         else:
-            logger.info(f"🟡 [ChatVLLMWrapper] Invoking (stream) with parameters: {params}")
+            logger.info(f"[ChatVLLMWrapper] Invoking (stream) with parameters: {params}")
             return self._stream_generator(params)
 
     def _stream_generator(
@@ -101,9 +101,9 @@ class ChatVLLMWrapper:
         then yields `AIMessageChunk(content=...)` for each partial token received.
         """
         try:
-            logger.info("🔄 Starting streaming call to vLLM endpoint...")
+            logger.info("Starting streaming call to vLLM endpoint...")
             stream_resp = self.client.chat.completions.create(**params)
-            logger.info("🔄 Streaming response object received.")
+            logger.info("Streaming response object received.")
 
             for i, chunk in enumerate(stream_resp):
                 logger.debug(f"Chunk {i}: {chunk}")
@@ -116,16 +116,16 @@ class ChatVLLMWrapper:
 
                 if "content" in delta_obj:
                     partial_text = delta_obj["content"]
-                    logger.info(f"📌 Received streaming chunk {i}: {partial_text!r}")
+                    logger.info(f"Received streaming chunk {i}: {partial_text!r}")
                     yield AIMessageChunk(content=partial_text)
 
                 finish_reason = choice.get("finish_reason", None)
                 if finish_reason in ("stop", "finished"):
-                    logger.info(f"✅ Finish reason received in chunk {i}: {finish_reason}. Ending stream.")
+                    logger.info(f"Finish reason received in chunk {i}: {finish_reason}. Ending stream.")
                     break
 
         except Exception as e:
-            logger.error(f"❌ Error during streaming: {e}", exc_info=True)
+            logger.error(f"Error during streaming: {e}", exc_info=True)
             raise
 
     def _convert_tools_to_functions(self):
