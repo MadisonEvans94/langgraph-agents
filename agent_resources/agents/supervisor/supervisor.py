@@ -1,5 +1,3 @@
-# agent_resources/agents/supervisor/supervisor.py
-
 from __future__ import annotations
 import logging
 import asyncio

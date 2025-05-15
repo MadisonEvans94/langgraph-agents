@@ -77,6 +77,7 @@ class PlanningAgent(Agent):
                 "description": t.get("description"),
                 "status":      "pending",
                 "result":      None,
+                "depends_on":  t.get("depends_on", []),
             })
 
         logger.success(f"\nPlanningAgent generated structured tasks:\n\n{pformat(structured, indent=2)}\n")

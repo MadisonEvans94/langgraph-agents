@@ -1,5 +1,3 @@
-# agent_resources/state_types.py
-
 from typing import List, Literal, Optional
 from typing_extensions import Annotated, TypedDict
 from langgraph.managed import IsLastStep, RemainingSteps
@@ -13,6 +11,7 @@ class Task(TypedDict):
     assigned_to: str       # e.g. "math_agent" or "web_search_agent"
     status: str            # "pending" | "in_progress" | "done" | "error"
     result: Optional[str]  # filled in once the sub-agent returns
+    depends_on: Optional[List[str]]  # NEW: list of task IDs this task depends on
 
 class SupervisorState(TypedDict):
     """
