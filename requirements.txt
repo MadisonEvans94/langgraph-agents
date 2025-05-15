@@ -83,3 +83,4 @@ xxhash==3.5.0
 yarl==1.19.0
 zstandard==0.23.0
 langgraph-supervisor==0.0.21
+loguru==0.7.3

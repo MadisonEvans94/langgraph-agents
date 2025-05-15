@@ -1,17 +1,16 @@
-# agent_resources/agents/supervisor/planning_agent.py
-
 from __future__ import annotations
-import logging
+# import logging
 import json
 import re
 from typing import Dict, Any, List
-
+from pprint import pformat
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from langgraph.prebuilt.chat_agent_executor import create_react_agent
 from agent_resources.base_agent import Agent
-from agent_resources.state_types import OrchestratorState
+from agent_resources.state_types import SupervisorState
+from agent_resources.prompts import PLANNING_AGENT_RAW_SYSTEM_PROMPT
+from loguru import logger
 
-logger = logging.getLogger(__name__)
 
 class PlanningAgent(Agent):
     """
@@ -34,35 +33,21 @@ class PlanningAgent(Agent):
         self.name = name
         self.memory = memory
         self.thread_id = thread_id or "default"
-
-        # create_react_agent already returns a compiled graph
         self.state_graph = self.build_graph()
 
     def build_graph(self):
         llm = self.llm_dict["default_llm"]
-
-        prompt = SystemMessage(content=(
-            "You are a planning agent.  Given the user's query in state['messages'],\n"
-            "break it down into a JSON array of tasks, each with an integer 'id' and a string 'description'.\n\n"
-            "Just output the raw JSON, e.g.:\n"
-            "```json\n"
-            "[\n"
-            "  { \"id\": 1, \"description\": \"Do X\" },\n"
-            "  { \"id\": 2, \"description\": \"Do Y\" }\n"
-            "]\n"
-            "```"
-        ))
-
+        prompt = SystemMessage(content=PLANNING_AGENT_RAW_SYSTEM_PROMPT)
         return create_react_agent(
             name=self.name,
             model=llm,
             prompt=prompt,
             tools=[],
-            state_schema=OrchestratorState,
+            state_schema=SupervisorState,
         )
 
     async def ainvoke(self, message: HumanMessage) -> dict:
-        logger.info("PlanningAgent received → %s", message.content)
+        logger.info("\nPlanningAgent received user query:\n%s\n", message.content)
 
         initial_state: dict[str, Any] = {"messages": [message], "tasks": []}
         result = await self.state_graph.ainvoke(
@@ -94,6 +79,6 @@ class PlanningAgent(Agent):
                 "result":      None,
             })
 
-        logger.info("PlanningAgent generated structured tasks: %s", structured)
+        logger.success(f"\nPlanningAgent generated structured tasks:\n\n{pformat(structured, indent=2)}\n")
         result["tasks"] = structured
         return result

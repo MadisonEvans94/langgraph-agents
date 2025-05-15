@@ -3,6 +3,7 @@
 from __future__ import annotations
 import logging
 import asyncio
+import pprint
 from typing import Dict, List
 
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
@@ -10,10 +11,11 @@ from langgraph_supervisor import create_supervisor
 from langgraph_supervisor.handoff import create_handoff_tool
 
 from agent_resources.base_agent import Agent
-from agent_resources.state_types import OrchestratorState
+from agent_resources.state_types import SupervisorState
 from agent_resources.agents.supervisor.planning_agent import PlanningAgent
 from agent_resources.agents.supervisor.math_agent import MathAgent
 from agent_resources.agents.supervisor.web_search_agent import WebSearchAgent
+from agent_resources.prompts import SUPERVISOR_AGENT_PROMPT
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +23,7 @@ class SupervisorAgent(Agent):
     """
     SupervisorAgent that:
       1) Plans first (via PlanningAgent)
-      2) Uses the built‐in create_supervisor loop
+      2) Uses the built in create_supervisor loop
       3) Aggregates all task results and returns the final answer
     """
     def __init__(
@@ -78,18 +80,7 @@ class SupervisorAgent(Agent):
             llm = llm.bind_tools(handoff_tools)
 
         # 4) Prompt that drives the loop & dispatch
-        supervisor_prompt = SystemMessage(content=(
-            "You are the supervisor.  You have a list of tasks in state['tasks'],\n"
-            "each with 'id', 'description', 'status', and 'result'.\n\n"
-            "On each turn:\n"
-            "  - If any task.status == 'pending', call the matching tool:\n"
-            "      • transfer_to_math_agent({'task_id':id,'task_description':description})\n"
-            "      • transfer_to_web_search_agent({…})\n"
-            "    then mark that task 'in_progress'.\n"
-            "  - When control returns, write the tool’s response into task.result and mark 'done'.\n"
-            "  - Repeat until *all* tasks have status 'done'.\n"
-            "  - Finally, output one assistant message summarizing each task and its result."
-        ))
+        supervisor_prompt = SystemMessage(content=SUPERVISOR_AGENT_PROMPT)
 
         # 5) Build & return the supervisor StateGraph
         return create_supervisor(
@@ -97,12 +88,12 @@ class SupervisorAgent(Agent):
             model          = llm,
             tools          = handoff_tools,          # <–– THIS is the fix
             prompt         = supervisor_prompt,
-            state_schema   = OrchestratorState,      # so it carries `tasks`
+            state_schema   = SupervisorState,      # so it carries `tasks`
             supervisor_name= self.name,
         )
 
     async def ainvoke(self, message: HumanMessage) -> AIMessage:
-        logger.info("SupervisorAgent received → %s", message.content)
+        logger.info("SupervisorAgent received user query:\n%s", message.content)
 
         # A) Plan first, outside the main graph
         planner = PlanningAgent(
@@ -113,7 +104,11 @@ class SupervisorAgent(Agent):
             name            = "planning_agent",
         )
         plan_result = await planner.ainvoke(message)
-        tasks       = plan_result.get("tasks", [])
+        tasks = plan_result.get("tasks", [])
+        logger.info(
+            "\n\nStructured tasks from PlanningAgent:\n\n%s\n\n",
+            pprint.pformat(tasks, indent=2, underscore_numbers=True)
+        )
 
         # B) Seed the supervisor graph with that task list
         initial_state = {"messages": [message], "tasks": tasks}

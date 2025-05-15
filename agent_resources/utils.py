@@ -82,12 +82,12 @@ class ChatVLLMWrapper:
             logger.info(f"🟢 [ChatVLLMWrapper] Invoking (non-stream) with parameters: {params}")
             try:
                 response = self.client.chat.completions.create(**params)
-                logger.info(f"✅ Received non-stream response: {response}")
+                logger.info(f"Received non-stream response: {response}")
                 content = response.choices[0].message.content
-                logger.info(f"✅ Extracted content (first 50 chars): {content[:50]!r}")
+                logger.info(f"Extracted content (first 50 chars): {content[:50]!r}")
                 return AIMessage(content=content.strip() if content else "")
             except Exception as e:
-                logger.error(f"❌ Error during non-stream invocation: {e}", exc_info=True)
+                logger.error(f"Error during non-stream invocation: {e}", exc_info=True)
                 raise
         else:
             logger.info(f"🟡 [ChatVLLMWrapper] Invoking (stream) with parameters: {params}")
@@ -121,11 +121,11 @@ class ChatVLLMWrapper:
 
                 finish_reason = choice.get("finish_reason", None)
                 if finish_reason in ("stop", "finished"):
-                    logger.info(f"✅ Finish reason received in chunk {i}: {finish_reason}. Ending stream.")
+                    logger.info(f"Finish reason received in chunk {i}: {finish_reason}. Ending stream.")
                     break
 
         except Exception as e:
-            logger.error(f"❌ Error during streaming: {e}", exc_info=True)
+            logger.error(f"Error during streaming: {e}", exc_info=True)
             raise
 
     def _convert_tools_to_functions(self):

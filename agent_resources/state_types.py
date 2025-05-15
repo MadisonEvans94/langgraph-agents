@@ -14,7 +14,7 @@ class Task(TypedDict):
     status: str            # "pending" | "in_progress" | "done" | "error"
     result: Optional[str]  # filled in once the sub-agent returns
 
-class OrchestratorState(TypedDict):
+class SupervisorState(TypedDict):
     """
     Custom state schema for the orchestrator:
       - default message-loop fields
