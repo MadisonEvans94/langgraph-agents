@@ -10,8 +10,8 @@ class Task(TypedDict):
     description: str
     assigned_to: str       # e.g. "math_agent" or "web_search_agent"
     status: str            # "pending" | "in_progress" | "done" | "error"
-    result: Optional[str]  # filled in once the sub-agent returns
-    depends_on: Optional[List[str]]  # NEW: list of task IDs this task depends on
+    result: Optional[str] 
+    depends_on: Optional[List[str]] 
 
 class SupervisorState(TypedDict):
     """
@@ -19,7 +19,6 @@ class SupervisorState(TypedDict):
       - default message-loop fields
       - adds a `tasks` list of Task objects
     """
-    # Now accepts multiple writes per step
     messages: Annotated[List[BaseMessage], add_messages]
     is_last_step: IsLastStep
     remaining_steps: RemainingSteps

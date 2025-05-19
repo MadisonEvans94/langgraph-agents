@@ -13,7 +13,13 @@ llm_configs:
       temperature: 0.7
       max_tokens: 512
       top_p: 1.0
-      # ...
+    reasoning_llm:
+      api_key: null
+      model: "o3-mini"
+      temperature: 0.7
+      max_tokens: 512
+      top_p: 1.0
+
   vllm:
     default_llm:
       api_key: null # or read from env

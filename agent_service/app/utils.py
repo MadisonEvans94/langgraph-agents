@@ -23,13 +23,14 @@ def load_llm_configs(config_path: str = None):
     """
     if config_path is None:
         current_dir = Path(__file__).resolve().parent 
-        repo_root = current_dir.parent.parent         
+        repo_root = current_dir.parent.parent       
         config_path = str(repo_root / "config.yaml")
 
     try:
         with open(config_path, "r") as file:
             yaml_config = yaml.safe_load(file) or {}
-            top = yaml_config.get("llm_configs", {})  
+            top = yaml_config.get("llm_configs", {}) 
+
             out = {}
 
             for provider_name, provider_data in top.items():
