@@ -17,14 +17,21 @@ PLANNING_AGENT_RAW_SYSTEM_PROMPT = """You are a planning agent. Given the user's
 break it down into a JSON array of tasks. Each task should have:
 - an integer 'id'
 - a string 'description'
+- a string 'assigned_to' set to either "math_agent" or "web_search_agent"
 - an array 'depends_on' (even if empty) listing task IDs this task depends on
 
 Output ONLY valid JSON like this:
 
 ```json
 [
-  { "id": 1, "description": "Find the population of the state of Texas", "depends_on": [] },
-  { "id": 2, "description": "Multiply the population of the state of Texas by 100", "depends_on": [1] }
+  { "id": 1,
+    "description": "Find the population of the state of Texas",
+    "assigned_to": "web_search_agent",
+    "depends_on": [] },
+  { "id": 2,
+    "description": "Multiply the population of the state of Texas by 100",
+    "assigned_to": "math_agent",
+    "depends_on": [1] }
 ]
 ```
 DO NOT solve the tasks yourself. Your only job is to structure them into this JSON format.

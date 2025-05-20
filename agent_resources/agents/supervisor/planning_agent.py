@@ -43,7 +43,7 @@ class PlanningAgent(Agent):
             model=llm,
             prompt=prompt,
             tools=[],
-            state_schema=SupervisorState,
+            state_schema=None
         )
 
     async def ainvoke(self, message: HumanMessage) -> dict:
@@ -75,6 +75,7 @@ class PlanningAgent(Agent):
             structured.append({
                 "id":          t.get("id"),
                 "description": t.get("description"),
+                "assigned_to": t.get("assigned_to"),
                 "status":      "pending",
                 "result":      None,
                 "depends_on":  t.get("depends_on", []),
