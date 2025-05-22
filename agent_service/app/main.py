@@ -1,10 +1,11 @@
+import shutil
+import tempfile
 from loguru import logger
 import os
 import uuid
-from fastapi import FastAPI
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from dotenv import load_dotenv
 from langchain_mcp_adapters.tools import load_mcp_tools
-from langchain_core.messages import HumanMessage
 from contextlib import asynccontextmanager
 from mcp import ClientSession
 from mcp.client.sse import sse_client
@@ -13,34 +14,28 @@ from .models import QueryRequest, QueryResponse
 from .utils import load_llm_configs
 from langgraph.checkpoint.memory import MemorySaver
 
-
-# Setup loguru logging
+# Setup logging
 logger.remove()
 logger.add(
     sink=lambda msg: print(msg, end=""),
-    format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan> - <level>{message}</level>\n",
+    format="<green>{time:HH:mm:ss}</green> | <level>{level:<8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan> - <level>{message}</level>\n",
     level="INFO",
-    colorize=True
+    colorize=True,
 )
 
 load_dotenv()
 
-# App-wide constants
 USE_LLM_PROVIDER = os.getenv("USE_LLM_PROVIDER", True)
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")
 MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://mcp-server:8002/sse")
 all_configs = load_llm_configs()
 llm_configs = all_configs.get(LLM_PROVIDER if USE_LLM_PROVIDER else "vllm", {})
 
-# Shared memory + factory
 shared_memory = MemorySaver()
 agent_factory = AgentFactory(memory=shared_memory)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Open a single long-lived SSE + ClientSession to the MCP server.
-    """
     app.state.tools = []
     app.state.mcp_session = None
 
@@ -54,7 +49,6 @@ async def lifespan(app: FastAPI):
         app.state.mcp_session = session
         app.state.tools = await load_mcp_tools(session)
         logger.success("✅ Loaded MCP tools")
-
         yield
 
     except Exception as e:
@@ -84,8 +78,7 @@ async def ask(request: QueryRequest):
     )
 
     logger.info(f"🧠 Invoking agent: {agent_type}")
-    ai_msg = await agent.ainvoke(HumanMessage(content=request.user_query))
-
+    ai_msg = await agent.ainvoke(request.user_query)
     return QueryResponse(
         response=ai_msg.content,
         thread_id=thread_id,
@@ -95,6 +88,40 @@ async def ask(request: QueryRequest):
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+@app.post("/summarize_pdf")
+async def summarize_pdf(file: UploadFile = File(...)):
+    if file.content_type != "application/pdf":
+        raise HTTPException(status_code=415, detail="File must be a PDF")
+
+    # 1. Persist upload to temp file for local processing
+    suffix = os.path.splitext(file.filename)[1] or ".pdf"
+    tmp_dir = tempfile.mkdtemp(prefix="upload_")
+    tmp_path = os.path.join(tmp_dir, f"{uuid.uuid4()}{suffix}")
+    with open(tmp_path, "wb") as out:
+        shutil.copyfileobj(file.file, out)
+
+    # 2. Build a self-contained AnalysisAgent (no MCP tools)
+    agent = agent_factory.factory(
+        agent_type="analysis_agent",
+        thread_id=str(uuid.uuid4()),
+        use_llm_provider=USE_LLM_PROVIDER,
+        llm_configs=llm_configs,
+        tools=[],  # we've inlined PDF logic in the agent itself
+    )
+
+    # 3. Invoke it on the local file path
+    result_state = await agent.ainvoke(tmp_path)
+    summary = result_state.get("summary", "")
+
+    # 4. Clean up
+    try:
+        os.remove(tmp_path)
+        os.rmdir(tmp_dir)
+    except OSError:
+        pass
+
+    return {"summary": summary}
 
 if __name__ == "__main__":
     import uvicorn
