@@ -115,3 +115,12 @@ Choose a single domain label from this list (in lower-case, no quotes):
 
 Given the summary, return exactly one of those labels.
 """
+
+# Prompt template for image search query extraction
+QUERY_EXTRACTION_PROMPT = """
+You are a specialized query extraction assistant.
+Given the paragraph below, produce a concise, three-word or fewer search query
+that best captures the core product described. Respond with only the query:
+
+{summary}
+"""
