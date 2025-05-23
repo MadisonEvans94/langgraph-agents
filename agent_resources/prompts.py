@@ -106,3 +106,31 @@ Each task in state['tasks'] contains:
 5. Once all tasks are complete, output a single assistant message that
    summarizes each task's result in order.
 """
+
+SUMMARY_PROMPT = """
+You are an expert document analyst.
+
+Write a **plain-text** executive summary of ≈250 words.  
+• **First sentence**: state the document’s overall thesis in one line.  
+• **Body** (3–4 sentences): summarize the three most important features or arguments, in the order they appear.  
+• **Final sentence**: note any key limitations or next steps.  
+
+Return **only** the summary—no bullet lists, no extra commentary.
+"""
+
+KEYPOINTS_PROMPT = """
+You are a marketing assistant.  
+Given the document summary, extract exactly **6** key-point phrases.  
+Each phrase should be **no more than 12 words**, capturing a single idea.  
+Output as a **JSON array** of strings, for example:
+
+["First point", "Second point", "..."]
+"""
+
+DOMAIN_PROMPT = """
+You are a content-classification assistant.  
+Choose a single domain label from this list (in lower-case, no quotes):
+["technology", "finance", "healthcare", "entertainment", "food & beverage"]
+
+Given the summary, return exactly one of those labels.
+"""

@@ -33,8 +33,21 @@ class SupervisorState(TypedDict):
     current_task_id: Optional[int]
     next: Optional[str]          # name of the next node to execute
 
-class AnalysisState(TypedDict, total=False):
+class MarketingAgentState(TypedDict, total=False):
+    """
+    State schema for the AnalysisAgent's marketing workflow.
+
+    Fields:
+        messages: Annotated list of messages (AnyMessage) persisted through the agent for context.
+        path: Filesystem path to the input PDF or text document being analyzed.
+        chunks: List of Document objects representing text chunks extracted from the document.
+        summary: String containing the executive summary generated from all chunks.
+        key_points: List of concise key point phrases extracted from the summary.
+        domain: One- or two-word label classifying the document's primary domain (e.g., "technology").
+    """
     messages: Annotated[List[AnyMessage], add_messages]
     path: str
     chunks: List[Document]
     summary: str
+    key_points: List[str]
+    domain: str

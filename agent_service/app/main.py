@@ -13,6 +13,7 @@ from agent_resources.agent_factory import AgentFactory
 from .models import QueryRequest, QueryResponse
 from .utils import load_llm_configs
 from langgraph.checkpoint.memory import MemorySaver
+from pprint import pformat
 
 # Setup logging
 logger.remove()
@@ -112,6 +113,7 @@ async def summarize_pdf(file: UploadFile = File(...)):
 
     # 3. Invoke it on the local file path
     result_state = await agent.ainvoke(tmp_path)
+    logger.info(f"Agent final state:\n{pformat(result_state)}")
     summary = result_state.get("summary", "")
 
     # 4. Clean up
