@@ -51,3 +51,16 @@ class MarketingAgentState(TypedDict, total=False):
     summary: str
     key_points: List[str]
     domain: str
+
+class ImageSearchAgentState(TypedDict, total=False):
+    """
+    State schema for the ImageSearchAgent.
+
+    Fields:
+        messages: Annotated list of messages (AnyMessage) persisted through the agent for context.
+        query: The search query string provided by the user.
+        images: List of image URLs returned by the image search tool.
+    """
+    messages: Annotated[List[AnyMessage], add_messages]
+    query: str
+    images: List[str]

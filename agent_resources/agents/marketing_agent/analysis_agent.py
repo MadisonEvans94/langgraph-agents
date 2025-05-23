@@ -34,10 +34,7 @@ class AnalysisAgent(Agent):
         self.runner = self.state_graph
 
     def build_graph(self):
-        """
-        Graph flow:
-            START → extract_pdf → summarise → extract_key_points → detect_domain → END
-        """
+
         llm = self.llm_dict["default_llm"]
 
         sg = StateGraph(MarketingAgentState)
@@ -50,8 +47,13 @@ class AnalysisAgent(Agent):
         # Edges
         sg.add_edge(START, "extract_pdf")
         sg.add_edge("extract_pdf", "summarise")
+
+        # fan-out after summarise
         sg.add_edge("summarise", "extract_key_points")
-        sg.add_edge("extract_key_points", "detect_domain")
+        sg.add_edge("summarise", "detect_domain")
+
+        # join to END
+        sg.add_edge("extract_key_points", END)
         sg.add_edge("detect_domain", END)
 
         return sg.compile()

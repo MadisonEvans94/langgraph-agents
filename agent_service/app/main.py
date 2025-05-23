@@ -3,13 +3,17 @@ import tempfile
 from loguru import logger
 import os
 import uuid
+from typing import List
+
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from pydantic import BaseModel
 from dotenv import load_dotenv
 from langchain_mcp_adapters.tools import load_mcp_tools
 from contextlib import asynccontextmanager
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 from agent_resources.agent_factory import AgentFactory
+from agent_resources.agents.marketing_agent.image_search_agent import ImageSearchAgent
 from .models import QueryRequest, QueryResponse
 from .utils import load_llm_configs
 from langgraph.checkpoint.memory import MemorySaver
@@ -21,7 +25,6 @@ logger.add(
     sink=lambda msg: print(msg, end=""),
     format="<green>{time:HH:mm:ss}</green> | <level>{level:<8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan> - <level>{message}</level>\n",
     level="INFO",
-    colorize=True,
 )
 
 load_dotenv()
@@ -102,13 +105,13 @@ async def summarize_pdf(file: UploadFile = File(...)):
     with open(tmp_path, "wb") as out:
         shutil.copyfileobj(file.file, out)
 
-    # 2. Build a self-contained AnalysisAgent (no MCP tools)
+    # 2. Build a self‐contained AnalysisAgent (no MCP tools)
     agent = agent_factory.factory(
         agent_type="analysis_agent",
         thread_id=str(uuid.uuid4()),
         use_llm_provider=USE_LLM_PROVIDER,
         llm_configs=llm_configs,
-        tools=[],  # we've inlined PDF logic in the agent itself
+        tools=[],  # we inlined PDF logic in the agent itself
     )
 
     # 3. Invoke it on the local file path
@@ -124,6 +127,41 @@ async def summarize_pdf(file: UploadFile = File(...)):
         pass
 
     return {"summary": summary}
+
+# --- NEW IMAGE SEARCH ENDPOINT ---
+class ImageSearchRequest(BaseModel):
+    query: str
+
+class ImageSearchResponse(BaseModel):
+    images: List[str]
+
+@app.post("/search_images", response_model=ImageSearchResponse)
+async def search_images(request: ImageSearchRequest):
+    query = request.query.strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="`query` must be provided")
+
+    # pull the one image_search tool from MCP-loaded tools
+    image_tool = next(
+        (t for t in app.state.tools if getattr(t, "name", "") == "image_search"),
+        None,
+    )
+    if not image_tool:
+        raise HTTPException(status_code=500, detail="image_search tool not available")
+
+    # spin up a brand-new ImageSearchAgent with that single tool
+    agent = ImageSearchAgent(
+        llm_configs=llm_configs,
+        memory=shared_memory,
+        thread_id=str(uuid.uuid4()),
+        tools=[image_tool],
+        use_llm_provider=USE_LLM_PROVIDER,
+    )
+
+    result_state = await agent.ainvoke(query)
+    images = result_state.get("images", [])
+    logger.info(f"Agent final state:\n{pformat(result_state)}")
+    return {"images": images}
 
 if __name__ == "__main__":
     import uvicorn

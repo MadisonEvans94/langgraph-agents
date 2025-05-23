@@ -47,10 +47,15 @@ async def main():
         return
 
     save_directory = os.path.dirname(__file__)
-    save_path = os.path.join(
-        save_directory,
-        f"agent_resources/agents/{selected_agent_type}/{selected_agent_type}_workflow.png"
-    )
+    # Derive agent folder from the agent's module path
+    module_path = agent.__class__.__module__  # e.g. 'agent_resources.agents.marketing_agent.analysis_agent'
+    parts = module_path.split('.')
+    agent_folder = parts[-2]  # the directory under 'agents'
+    agent_name = parts[-1]
+    # Construct and ensure the output directory exists
+    save_dir = os.path.join(save_directory, 'agent_resources', 'agents', agent_folder)
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, f"{agent_name}_workflow.png")
 
     agent.visualize_workflow(save_path=save_path)
 
