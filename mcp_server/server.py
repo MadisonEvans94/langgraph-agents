@@ -101,6 +101,7 @@ async def image_search(
         "query": query,
         "per_page": per_page,
         "page": page,
+        "order_by": "relevant",  
     }
     async with httpx.AsyncClient() as client:
         resp = await client.get(endpoint, headers=headers, params=params, timeout=10.0)

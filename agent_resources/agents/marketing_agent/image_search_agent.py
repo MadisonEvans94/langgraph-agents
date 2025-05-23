@@ -19,7 +19,7 @@ async def generate_query_node(state: ImageSearchAgentState, llm) -> dict:
     summary = state["summary"]
     prompt = (
         "You are a specialized query extraction assistant. "
-        "Given the paragraph below, produce a concise, three-word or fewer search query "
+        "Given the paragraph below, produce a concise, 3 word or fewer search query "
         "that best captures the core product described. Respond with only the query:\n\n"
         f"{summary}"
     )
@@ -33,6 +33,7 @@ async def generate_query_node(state: ImageSearchAgentState, llm) -> dict:
     else:
         resp = llm.invoke(msgs)
     query = resp.content.strip()
+    logger.info(f"Generated search query: {query}")
     return {"query": query}
 
 
