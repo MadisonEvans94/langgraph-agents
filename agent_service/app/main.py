@@ -149,13 +149,12 @@ async def search_images(request: ImageSearchRequest):
     if not image_tool:
         raise HTTPException(status_code=500, detail="image_search tool not available")
 
-    # spin up a brand-new ImageSearchAgent with that single tool
-    agent = ImageSearchAgent(
-        llm_configs=llm_configs,
-        memory=shared_memory,
+    agent = agent_factory.factory(
+        agent_type="image_search_agent",
         thread_id=str(uuid.uuid4()),
-        tools=[image_tool],
         use_llm_provider=USE_LLM_PROVIDER,
+        llm_configs=llm_configs,
+        tools=[image_tool],
     )
 
     result_state = await agent.ainvoke(query)

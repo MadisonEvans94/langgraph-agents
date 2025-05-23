@@ -34,7 +34,12 @@ class AnalysisAgent(Agent):
         self.runner = self.state_graph
 
     def build_graph(self):
-
+        """
+        Graph flow:
+            START → extract_pdf → summarise
+                ↘→ extract_key_points → END
+                ↘→ detect_domain → END
+        """
         llm = self.llm_dict["default_llm"]
 
         sg = StateGraph(MarketingAgentState)
