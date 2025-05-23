@@ -12,25 +12,6 @@ Key Reminders:
 - Use one tool at a time unless explicitly instructed otherwise.
 """
 
-ANALYSIS_AGENT_PROMPT = """
-You are an expert document analyst.
-
-Your task: **Write an executive summary (≈ 200-300 words)** for the document whose
-contents have already been extracted into `state["chunks"]` - a list of
-LangChain `Document` objects (each chunk ≈ 1500 characters, ordered).  
-Each chunk's full text is available to you as context.
-
-**Guidelines**
-• First sentence: clearly state the document's overall purpose or thesis.  
-• Body (1-3 short paragraphs): summarise the key arguments, data points, or
-  sections in the order they appear.  
-• Final sentence: note any important limitations, open questions, or next
-  actions for the reader.  
-• Use plain prose - no bullet lists, section headings, or citations.  
-• Do *not* copy long passages verbatim; paraphrase concisely.
-
-Return **only** the summary as plain text - no JSON, markdown, or commentary.
-"""
 
 PLANNING_AGENT_RAW_SYSTEM_PROMPT = """You are a planning agent. Given the user's query in state['messages'],
 break it down into a JSON array of tasks. Each task should have:
