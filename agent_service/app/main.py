@@ -67,6 +67,54 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Agent MCP Client", lifespan=lifespan)
 
+class SupervisorResponse(BaseModel):
+    summary: str
+    key_points: list[str]
+    domain: str
+    image_query: str | None
+    images: list[str]
+
+@app.post("/run_supervisor", response_model=SupervisorResponse)
+async def run_supervisor(file: UploadFile = File(...)):
+    # 1. Validate & save incoming PDF
+    if file.content_type != "application/pdf":
+        raise HTTPException(status_code=415, detail="File must be a PDF")
+    suffix = os.path.splitext(file.filename)[1] or ".pdf"
+    tmp_dir = tempfile.mkdtemp(prefix="upload_")
+    tmp_path = os.path.join(tmp_dir, f"{uuid.uuid4()}{suffix}")
+    with open(tmp_path, "wb") as out:
+        shutil.copyfileobj(file.file, out)
+
+    # 2. Instantiate the supervisor agent
+    svc_agent = agent_factory.factory(
+        agent_type="supervisor_agent",
+        thread_id=str(uuid.uuid4()),
+        use_llm_provider=USE_LLM_PROVIDER,
+        llm_configs=llm_configs,
+        tools=app.state.tools,
+    )
+
+    # 3. Run the full PDF→analysis→image search flow
+    result = await svc_agent.ainvoke(tmp_path)
+
+    # 4. Unpack & return
+    analysis = result.get("analysis", {})
+
+    # 5. Clean up
+    try:
+        os.remove(tmp_path)
+        os.rmdir(tmp_dir)
+    except OSError:
+        pass
+
+    return SupervisorResponse(
+        summary=analysis.get("summary", ""),
+        key_points=analysis.get("key_points", []),
+        domain=analysis.get("domain", ""),
+        image_query=result.get("image_query"),
+        images=result.get("images", []),
+    )
+        
 @app.post("/invoke")
 async def ask(request: QueryRequest):
     thread_id = request.thread_id or str(uuid.uuid4())

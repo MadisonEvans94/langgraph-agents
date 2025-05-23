@@ -8,7 +8,7 @@ from langchain.tools import BaseTool
 
 from .agents.marketing_agent.analysis_agent import AnalysisAgent
 from .agents.marketing_agent.image_search_agent import ImageSearchAgent
-from .agents.supervisor.supervisor import SupervisorAgent   
+from .agents.marketing_agent.supervisor_agent import SupervisorAgent   
 from .agents.react_agent.react_agent import ReactAgent
 from .agents.conversational_agent.conversational_agent import ConversationalAgent
 
