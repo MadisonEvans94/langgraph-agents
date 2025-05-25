@@ -3,14 +3,14 @@ from typing import Dict, Optional
 from functools import partial
 
 from agent_resources.base_agent import Agent
-from agent_resources.state_types import ImageSearchAgentState
+from agent_resources.state_types import ImageAgentState
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import SystemMessage, HumanMessage
 from agent_resources.prompts import QUERY_EXTRACTION_PROMPT
 
 logger = logging.getLogger(__name__)
 
-async def generate_query_node(state: ImageSearchAgentState, llm) -> dict:
+async def generate_query_node(state: ImageAgentState, llm) -> dict:
     summary = state["summary"]
     prompt = QUERY_EXTRACTION_PROMPT.format(summary=summary)
     msgs = [
@@ -25,7 +25,7 @@ async def generate_query_node(state: ImageSearchAgentState, llm) -> dict:
     logger.info(f"Generated search query: {query}")
     return {"query": query}
 
-async def image_search_node(state: ImageSearchAgentState, image_tool) -> dict:
+async def image_search_node(state: ImageAgentState, image_tool) -> dict:
     query = state["query"]
     args = {"query": query}
     if hasattr(image_tool, "ainvoke"):
@@ -34,7 +34,7 @@ async def image_search_node(state: ImageSearchAgentState, image_tool) -> dict:
         images = image_tool.invoke(args)
     return {"images": images}
 
-class ImageSearchAgent(Agent):
+class ImageAgent(Agent):
     def __init__(
         self,
         llm_configs: Dict[str, dict],
@@ -62,7 +62,7 @@ class ImageSearchAgent(Agent):
         llm = self.llm_dict["default_llm"]
         image_tool = self.image_tool
 
-        sg = StateGraph(ImageSearchAgentState)
+        sg = StateGraph(ImageAgentState)
         sg.add_node("generate_query", partial(generate_query_node, llm=llm))
         sg.add_node("image_search", partial(image_search_node, image_tool=image_tool))
         sg.set_entry_point("generate_query")
@@ -72,7 +72,7 @@ class ImageSearchAgent(Agent):
         return sg.compile()
 
     async def ainvoke(self, summary: str):
-        init_state: ImageSearchAgentState = {
+        init_state: ImageAgentState = {
             "summary": summary,
             "query": "",
             "images": [],

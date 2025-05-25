@@ -1,22 +1,12 @@
 # agent_resources/state_types.py
 
-from typing import Any, List, Dict, Optional
+from typing import Any, List, Dict
 from typing_extensions import Annotated, TypedDict
-from langgraph.managed import IsLastStep, RemainingSteps
 from langgraph.graph.message import add_messages
-from langchain_core.messages import BaseMessage, AnyMessage
+from langchain_core.messages import AnyMessage
 from langchain.schema import Document
 
-class Task(TypedDict):
-    """A single unit of work in the orchestrator."""
-    id: int
-    description: str
-    assigned_to: str        # "math_agent" or "web_search_agent"
-    status: str             # "pending" | "done" | "error"
-    result: Optional[str]
-    depends_on: List[int]   # prerequisite task IDs
-
-class MarketingAgentState(TypedDict, total=False):
+class AnalysisAgentState(TypedDict, total=False):
     """
     State schema for the AnalysisAgent's marketing workflow.
 
@@ -35,9 +25,9 @@ class MarketingAgentState(TypedDict, total=False):
     key_points: List[str]
     domain: str
 
-class ImageSearchAgentState(TypedDict, total=False):
+class ImageAgentState(TypedDict, total=False):
     """
-    State for ImageSearchAgent.
+    State for ImageAgent.
 
     Fields:
       summary: the paragraph to base the search query on.
@@ -48,23 +38,11 @@ class ImageSearchAgentState(TypedDict, total=False):
     summary: str
     query: str
     images: List[str]
-    messages: List[AnyMessage]
+    image_query: str
+    messages: Annotated[List[AnyMessage], add_messages]
 
 class SupervisorAgentState(TypedDict, total=False):
-    """
-    Top-level state for the SupervisorAgent, orchestrating analysis + image search.
-
-    Fields:
-      messages: Annotated[List[AnyMessage], add_messages]  # persisted chat context across the whole flow
-      path: str                                           # input PDF filepath
-      analysis: MarketingAgentState                       # sub-state from the AnalysisAgent
-      image_query: str                                    # generated image search query
-      images: ImageSearchAgentState                       # sub-state from the ImageSearchAgent
-      output_payload: Dict[str, Any]                      # final aggregated payload for downstream use
-    """
     messages: Annotated[List[AnyMessage], add_messages]
-    path: str
-    analysis: MarketingAgentState
+    analysis: AnalysisAgentState
     image_query: str
-    images: ImageSearchAgentState
-    output_payload: Dict[str, Any]
+    images: List[str]

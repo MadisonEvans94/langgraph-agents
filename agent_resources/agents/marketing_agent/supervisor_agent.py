@@ -6,7 +6,7 @@ from typing import Dict, Optional, Any, List
 from agent_resources.base_agent import Agent
 from agent_resources.state_types import SupervisorAgentState
 from agent_resources.agents.marketing_agent.analysis_agent import AnalysisAgent
-from agent_resources.agents.marketing_agent.image_search_agent import ImageSearchAgent
+from agent_resources.agents.marketing_agent.image_agent import ImageAgent
 
 from langgraph.graph import StateGraph, START, END
 
@@ -42,7 +42,7 @@ class SupervisorAgent(Agent):
             tools=[],
             use_llm_provider=self.use_llm_provider,
         )
-        self.image_agent = ImageSearchAgent(
+        self.image_agent = ImageAgent(
             llm_configs=llm_configs,
             memory=memory,
             thread_id=self.thread_id,
@@ -59,7 +59,11 @@ class SupervisorAgent(Agent):
 
         # 1) run the analysis_agent on the PDF path → put its full state under "analysis"
         async def run_analysis_step(state):
-            analysis_out = await self.analysis_agent.ainvoke(state["path"], state.get("messages"))
+            path = state.get("analysis", {}).get("path")
+            if not path:
+                raise ValueError("Missing 'path' in analysis state")
+            messages = state.get("messages", [])
+            analysis_out = await self.analysis_agent.ainvoke(path, messages)
             return {"analysis": analysis_out}
 
         sg.add_node("run_analysis", run_analysis_step)
@@ -69,10 +73,9 @@ class SupervisorAgent(Agent):
         async def run_image_step(state):
             summary = state["analysis"]["summary"]
             image_out = await self.image_agent.ainvoke(summary)
-            # return exactly the two keys we care about
             return {
                 "image_query": image_out["query"],
-                "images":      image_out["images"],
+                "images": image_out["images"],
             }
 
         sg.add_node("run_image", run_image_step)
@@ -80,14 +83,11 @@ class SupervisorAgent(Agent):
 
         # 3) assemble a final payload
         def assemble(state):
-            a = state["analysis"]
             return {
-                "summary":     a["summary"],
-                "key_points":  a.get("key_points", []),
-                "domain":      a.get("domain", ""),
+                "analysis": state["analysis"],
                 "image_query": state["image_query"],
-                "images":      state["images"],
-                "messages":    state.get("messages", []),
+                "images": state["images"],
+                "messages": state.get("messages", []),
             }
 
         sg.add_node("assemble", assemble)
@@ -97,5 +97,8 @@ class SupervisorAgent(Agent):
         return sg.compile()
 
     async def ainvoke(self, path: str, messages=None):
-        init_state = {"path": path, "messages": messages or []}
+        init_state = {
+            "analysis": {"path": path},
+            "messages": messages or [],
+        }
         return await self.runner.ainvoke(init_state)

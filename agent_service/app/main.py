@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 from agent_resources.agent_factory import AgentFactory
-from agent_resources.agents.marketing_agent.image_search_agent import ImageSearchAgent
+from agent_resources.agents.marketing_agent.image_agent import ImageAgent
 from .models import QueryRequest, QueryResponse
 from .utils import load_llm_configs
 from langgraph.checkpoint.memory import MemorySaver

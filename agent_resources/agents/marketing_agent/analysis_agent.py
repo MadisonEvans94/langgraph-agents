@@ -4,7 +4,7 @@ from pathlib import Path
 import json
 from langchain_community.document_loaders import PyPDFLoader, TextLoader
 from agent_resources.base_agent import Agent
-from agent_resources.state_types import MarketingAgentState
+from agent_resources.state_types import AnalysisAgentState
 from langgraph.graph import StateGraph, START, END
 from agent_resources.prompts import SUMMARY_PROMPT, KEYPOINTS_PROMPT, DOMAIN_PROMPT
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -91,7 +91,7 @@ class AnalysisAgent(Agent):
         """
         llm = self.llm_dict["default_llm"]
 
-        sg = StateGraph(MarketingAgentState)
+        sg = StateGraph(AnalysisAgentState)
         # Nodes
         sg.add_node("extract_pdf", extract_pdf_node)
         sg.add_node("summarise", lambda state: summarise_node(state, llm))

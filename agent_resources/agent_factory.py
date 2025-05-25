@@ -7,7 +7,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langchain.tools import BaseTool
 
 from .agents.marketing_agent.analysis_agent import AnalysisAgent
-from .agents.marketing_agent.image_search_agent import ImageSearchAgent
+from .agents.marketing_agent.image_agent import ImageAgent
 from .agents.marketing_agent.supervisor_agent import SupervisorAgent   
 from .agents.react_agent.react_agent import ReactAgent
 from .agents.conversational_agent.conversational_agent import ConversationalAgent
@@ -25,7 +25,7 @@ class AgentFactory:
             "react_agent": ReactAgent,
             "supervisor_agent": SupervisorAgent,  
             "analysis_agent": AnalysisAgent, 
-            "image_search_agent": ImageSearchAgent
+            "image_search_agent": ImageAgent
         }
 
     def factory(
