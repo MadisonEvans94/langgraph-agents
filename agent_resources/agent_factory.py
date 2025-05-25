@@ -6,6 +6,8 @@ import uuid
 from langgraph.checkpoint.memory import MemorySaver
 from langchain.tools import BaseTool
 
+from .agents.marketing_agent.html_agent import HTMLAgent
+
 from .agents.marketing_agent.analysis_agent import AnalysisAgent
 from .agents.marketing_agent.image_agent import ImageAgent
 from .agents.marketing_agent.supervisor_agent import SupervisorAgent   
@@ -25,7 +27,8 @@ class AgentFactory:
             "react_agent": ReactAgent,
             "supervisor_agent": SupervisorAgent,  
             "analysis_agent": AnalysisAgent, 
-            "image_search_agent": ImageAgent
+            "image_search_agent": ImageAgent, 
+            "html_agent": HTMLAgent
         }
 
     def factory(

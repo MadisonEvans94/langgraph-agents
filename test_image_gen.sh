@@ -3,16 +3,13 @@ source .env
 [ -z "$OPENAI_API_KEY" ] && { echo "Need OPENAI_API_KEY"; exit 1; }
 
 IMAGE_PATH="reference.png"
-MASK_PATH="mask.png"
 OUTPUT_IMAGE="processor_ad_image.png"
 PROMPT="Create a professional advertisement-style image showcasing this computer processor. Use dramatic lighting, sleek presentation, and highlight its technological sophistication. background must be blue"
 
-# 1) Call the API and save raw JSON
 resp=$(curl -s -X POST https://api.openai.com/v1/images/edits \
   -H "Authorization: Bearer $OPENAI_API_KEY" \
-  -F "model=gpt-image-1" \
-  -F "image[]=@${IMAGE_PATH}" \
-  -F mask="@${MASK_PATH}" \
+  -F model="gpt-image-1" \
+  -F image="@${IMAGE_PATH}" \
   -F prompt="${PROMPT}" \
   -F n=1 \
   -F size="1024x1024")

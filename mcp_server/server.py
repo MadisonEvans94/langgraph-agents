@@ -86,7 +86,7 @@ def extract_pdf(path: str) -> str:
 )
 async def image_search(
     query: str,
-    per_page: int = 3,
+    per_page: int = 2,
     page: int = 1,
 ) -> list[str]:
     """

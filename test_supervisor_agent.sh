@@ -43,4 +43,10 @@ echo
 echo "🖼️  Images:"
 echo "$response" | jq -r '.images[]'
 echo
-echo "✅  Done."
+
+# ---------- Save HTML ----------
+HTML_FILE="supervisor_output.html"
+echo "$response" | jq -r '.html' > "$HTML_FILE"
+echo "📄 HTML saved to $HTML_FILE"
+echo "🌐 Opening in browser..."
+open "$HTML_FILE"

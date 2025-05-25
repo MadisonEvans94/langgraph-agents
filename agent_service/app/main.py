@@ -73,6 +73,7 @@ class SupervisorResponse(BaseModel):
     domain: str
     image_query: str | None
     images: list[str]
+    html: str
 
 @app.post("/run_supervisor", response_model=SupervisorResponse)
 async def run_supervisor(file: UploadFile = File(...)):
@@ -113,6 +114,7 @@ async def run_supervisor(file: UploadFile = File(...)):
         domain=analysis.get("domain", ""),
         image_query=result.get("image_query"),
         images=result.get("images", []),
+        html=result.get("html", "")
     )
         
 @app.post("/invoke")
@@ -140,6 +142,29 @@ async def ask(request: QueryRequest):
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+# --- NEW HTML GENERATION ENDPOINT ---
+from pydantic import BaseModel
+
+class HTMLRequest(BaseModel):
+    summary: str
+    image_url: str
+
+class HTMLResponse(BaseModel):
+    html: str
+
+@app.post("/generate_html", response_model=HTMLResponse)
+async def generate_html(req: HTMLRequest):
+    agent = agent_factory.factory(
+        agent_type="html_agent",
+        thread_id=str(uuid.uuid4()),
+        use_llm_provider=USE_LLM_PROVIDER,
+        llm_configs=llm_configs,
+        tools=[],
+    )
+    result = await agent.ainvoke(req.summary, req.image_url)
+    return {"html": result.get("html", "")}
 
 @app.post("/summarize_pdf")
 async def summarize_pdf(file: UploadFile = File(...)):

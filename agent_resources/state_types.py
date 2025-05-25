@@ -1,5 +1,3 @@
-# agent_resources/state_types.py
-
 from typing import Any, List, Dict
 from typing_extensions import Annotated, TypedDict
 from langgraph.graph.message import add_messages
@@ -41,8 +39,15 @@ class ImageAgentState(TypedDict, total=False):
     image_query: str
     messages: Annotated[List[AnyMessage], add_messages]
 
+class HTMLAgentState(TypedDict, total=False):
+    messages: Annotated[List[AnyMessage], add_messages]
+    image_url: str
+    summary: str
+    html: str
+
 class SupervisorAgentState(TypedDict, total=False):
     messages: Annotated[List[AnyMessage], add_messages]
     analysis: AnalysisAgentState
     image_query: str
     images: List[str]
+    html: str  # add this if not already present
