@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 from agent_resources.agent_factory import AgentFactory
+from langchain_core.messages import HumanMessage
 from agent_resources.agents.marketing_agent.image_agent import ImageAgent
 from .models import QueryRequest, QueryResponse
 from .utils import load_llm_configs
@@ -106,17 +107,21 @@ async def run_supervisor(file: UploadFile = File(...)):
         tools=app.state.tools,
     )
 
-    # 4. Run the full PDF→analysis→image search→html generation flow
-    result = await svc_agent.ainvoke(chunks)
+    # 4. Concatenate all chunks into full text
+    full_text = "\n\n".join(chunk.page_content for chunk in chunks)
+    messages = [HumanMessage(content=full_text)]
+    
+    # 5. Run the full PDF→analysis→image search→html generation flow
+    result = await svc_agent.ainvoke(messages)
 
-    # 5. Clean up
+    # 6. Clean up
     try:
         os.remove(tmp_path)
         os.rmdir(tmp_dir)
     except OSError:
         pass
 
-    # 6. Unpack and return
+    # 7. Unpack and return
     analysis = result.get("analysis", {})
     return SupervisorResponse(
         summary=analysis.get("summary", ""),

@@ -58,18 +58,16 @@ class SupervisorAgent(Agent):
 
         # build and compile graph
         self.state_graph = self.build_graph()
-        self.runner = self.state_graph
 
     def build_graph(self):
         sg = StateGraph(SupervisorAgentState)
 
         # Step 1: Analysis
         async def run_analysis_step(state):
-            path = state.get("analysis", {}).get("path")
-            if not path:
-                raise ValueError("Missing 'path' in analysis state")
             messages = state.get("messages", [])
-            analysis_out = await self.analysis_agent.ainvoke(path, messages)
+            if not messages:
+                raise ValueError("No messages found for analysis")
+            analysis_out = await self.analysis_agent.ainvoke(messages=messages)
             return {"analysis": analysis_out}
 
         sg.add_node("run_analysis", run_analysis_step)
@@ -115,9 +113,6 @@ class SupervisorAgent(Agent):
 
         return sg.compile()
 
-    async def ainvoke(self, path: str, messages=None):
-        init_state = {
-            "analysis": {"path": path},
-            "messages": messages or [],
-        }
-        return await self.runner.ainvoke(init_state)
+    async def ainvoke(self, messages):
+        logger.debug(f"[SupervisorAgent] Starting with {len(messages)} message(s)")
+        return await self.state_graph.ainvoke({"messages": messages})

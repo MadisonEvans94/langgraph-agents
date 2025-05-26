@@ -1,6 +1,6 @@
 import logging
 from typing import Dict, List, Optional
-from pathlib import Path
+from langchain_core.documents import Document
 import json
 
 from agent_resources.base_agent import Agent
@@ -14,16 +14,15 @@ logger = logging.getLogger(__name__)
 
 
 def summarise_node(state: Dict, llm) -> Dict:
-    # Combine all chunk text into a single string
-    text = "\n\n".join(doc.page_content for doc in state["chunks"])
     messages = [
         SystemMessage(content=SUMMARY_PROMPT),
-        HumanMessage(content=text),
+        *state["messages"],  # contains HumanMessage with document content
     ]
     response = llm.invoke(messages)
     summary = response.content.strip()
     logger.debug("Summary length: %d", len(summary))
     return {"summary": summary}
+
 
 def extract_key_points_node(state: Dict, llm) -> Dict:
     messages = [
@@ -66,7 +65,6 @@ class AnalysisAgent(Agent):
         self.memory = memory
         self.thread_id = thread_id or "default"
         self.state_graph = self.build_graph()
-        self.runner = self.state_graph
 
     def build_graph(self):
         """
@@ -96,13 +94,8 @@ class AnalysisAgent(Agent):
 
         return sg.compile()
 
-    async def ainvoke(self, chunks: List["Document"], messages=None):
-        """
-        Run the graph and return the final state (which includes 'summary',
-        'key_points', and 'domain').
-        """
+    async def ainvoke(self, messages):
         init_state = {
-            "chunks": chunks,
-            "messages": messages or [],
+            "messages": messages,
         }
-        return await self.runner.ainvoke(init_state)
+        return await self.state_graph.ainvoke(init_state)
