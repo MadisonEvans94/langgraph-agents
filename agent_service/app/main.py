@@ -4,7 +4,8 @@ from loguru import logger
 import os
 import uuid
 from typing import List
-
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_core.documents import Document
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -18,6 +19,7 @@ from .models import QueryRequest, QueryResponse
 from .utils import load_llm_configs
 from langgraph.checkpoint.memory import MemorySaver
 from pprint import pformat
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 # Setup logging
 logger.remove()
@@ -86,7 +88,16 @@ async def run_supervisor(file: UploadFile = File(...)):
     with open(tmp_path, "wb") as out:
         shutil.copyfileobj(file.file, out)
 
-    # 2. Instantiate the supervisor agent
+    # 2. Load & split document
+    try:
+        loader = PyPDFLoader(tmp_path)
+        docs = loader.load()
+        splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=200)
+        chunks: List[Document] = splitter.split_documents(docs)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to process PDF: {e}")
+
+    # 3. Instantiate the supervisor agent
     svc_agent = agent_factory.factory(
         agent_type="supervisor_agent",
         thread_id=str(uuid.uuid4()),
@@ -95,11 +106,8 @@ async def run_supervisor(file: UploadFile = File(...)):
         tools=app.state.tools,
     )
 
-    # 3. Run the full PDF→analysis→image search flow
-    result = await svc_agent.ainvoke(tmp_path)
-
-    # 4. Unpack & return
-    analysis = result.get("analysis", {})
+    # 4. Run the full PDF→analysis→image search→html generation flow
+    result = await svc_agent.ainvoke(chunks)
 
     # 5. Clean up
     try:
@@ -108,6 +116,8 @@ async def run_supervisor(file: UploadFile = File(...)):
     except OSError:
         pass
 
+    # 6. Unpack and return
+    analysis = result.get("analysis", {})
     return SupervisorResponse(
         summary=analysis.get("summary", ""),
         key_points=analysis.get("key_points", []),

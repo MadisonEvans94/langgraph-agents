@@ -3,8 +3,8 @@ source .env
 [ -z "$OPENAI_API_KEY" ] && { echo "Need OPENAI_API_KEY"; exit 1; }
 
 IMAGE_PATH="reference.png"
-OUTPUT_IMAGE="processor_ad_image.png"
-PROMPT="Create a professional advertisement-style image showcasing this computer processor. Use dramatic lighting, sleek presentation, and highlight its technological sophistication. background must be blue"
+OUTPUT_IMAGE="reference_output.png"
+PROMPT="A sleek, modern Waymo autonomous vehicle driving through a clean, urban environment during daylight. The car is a white Chrysler Pacifica or Jaguar I-PACE with visible Waymo branding and roof-mounted sensor array. Surroundings include city buildings, pedestrians at a safe distance, and clear roads, with a realistic photographic style, professional lighting, and a tech-forward tone. Emphasize innovation, safety, and advanced technology."
 
 resp=$(curl -s -X POST https://api.openai.com/v1/images/edits \
   -H "Authorization: Bearer $OPENAI_API_KEY" \

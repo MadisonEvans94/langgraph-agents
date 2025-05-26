@@ -92,8 +92,8 @@ SUMMARY_PROMPT = """
 You are an expert document analyst.
 
 Write a **plain-text** executive summary of ≈250 words.  
-• **First sentence**: state the document’s overall thesis in one line.  
-• **Body** (3–4 sentences): summarize the three most important features or arguments, in the order they appear.  
+• **First sentence**: state the document's overall thesis in one line.  
+• **Body** (3 to 4 sentences): summarize the three most important features or arguments, in the order they appear.  
 • **Final sentence**: note any key limitations or next steps.  
 
 Return **only** the summary—no bullet lists, no extra commentary.
@@ -120,7 +120,8 @@ Given the summary, return exactly one of those labels.
 QUERY_EXTRACTION_PROMPT = """
 You are a specialized query extraction assistant.
 Given the paragraph below, produce a concise, three-word or fewer search query
-that best captures the core product described. Respond with only the query:
+that best captures the core product described. Prioritize the entity itself that is being mentioned in the summary (i/e phone, car, computer, etc). Respond with only the query
 
+PRODUCT SUMMARY: 
 {summary}
 """

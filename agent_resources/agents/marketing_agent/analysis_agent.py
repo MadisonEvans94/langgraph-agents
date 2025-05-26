@@ -2,30 +2,16 @@ import logging
 from typing import Dict, List, Optional
 from pathlib import Path
 import json
-from langchain_community.document_loaders import PyPDFLoader, TextLoader
+
 from agent_resources.base_agent import Agent
 from agent_resources.state_types import AnalysisAgentState
 from langgraph.graph import StateGraph, START, END
 from agent_resources.prompts import SUMMARY_PROMPT, KEYPOINTS_PROMPT, DOMAIN_PROMPT
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+
 from langchain_core.messages import SystemMessage, HumanMessage
 
 logger = logging.getLogger(__name__)
 
-_LOADER_BY_EXT = {
-    ".pdf": PyPDFLoader,
-    ".txt": TextLoader,
-}
-
-async def extract_pdf_node(state: Dict) -> Dict:
-    path = Path(state["path"])
-    loader = _LOADER_BY_EXT.get(path.suffix.lower(), TextLoader)
-    docs = loader(str(path)).load()
-    chunks = RecursiveCharacterTextSplitter(
-        chunk_size=1500, chunk_overlap=200
-    ).split_documents(docs)
-    logger.debug("Extracted %d chunks from %s", len(chunks), path)
-    return {"chunks": chunks}
 
 def summarise_node(state: Dict, llm) -> Dict:
     # Combine all chunk text into a single string
@@ -85,7 +71,7 @@ class AnalysisAgent(Agent):
     def build_graph(self):
         """
         Graph flow:
-            START → extract_pdf → summarise
+            summarise
                 ↘→ extract_key_points → END
                 ↘→ detect_domain → END
         """
@@ -93,14 +79,12 @@ class AnalysisAgent(Agent):
 
         sg = StateGraph(AnalysisAgentState)
         # Nodes
-        sg.add_node("extract_pdf", extract_pdf_node)
         sg.add_node("summarise", lambda state: summarise_node(state, llm))
         sg.add_node("extract_key_points", lambda state: extract_key_points_node(state, llm))
         sg.add_node("detect_domain", lambda state: detect_domain_node(state, llm))
 
-        # Edges
-        sg.add_edge(START, "extract_pdf")
-        sg.add_edge("extract_pdf", "summarise")
+        # Set entry point
+        sg.set_entry_point("summarise")
 
         # fan-out after summarise
         sg.add_edge("summarise", "extract_key_points")
@@ -112,10 +96,13 @@ class AnalysisAgent(Agent):
 
         return sg.compile()
 
-    async def ainvoke(self, path: str, messages=None):
+    async def ainvoke(self, chunks: List["Document"], messages=None):
         """
         Run the graph and return the final state (which includes 'summary',
         'key_points', and 'domain').
         """
-        init_state = {"path": path, "messages": messages or []}
+        init_state = {
+            "chunks": chunks,
+            "messages": messages or [],
+        }
         return await self.runner.ainvoke(init_state)
