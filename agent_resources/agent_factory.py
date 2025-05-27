@@ -10,7 +10,7 @@ from .agents.marketing_agent.html_agent import HTMLAgent
 
 from .agents.marketing_agent.analysis_agent import AnalysisAgent
 from .agents.marketing_agent.image_agent import ImageAgent
-from .agents.marketing_agent.supervisor_agent import SupervisorAgent   
+from .agents.marketing_agent.supervisor_agent import SupervisorAgent
 from .agents.react_agent.react_agent import ReactAgent
 from .agents.conversational_agent.conversational_agent import ConversationalAgent
 

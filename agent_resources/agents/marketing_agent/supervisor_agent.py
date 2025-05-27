@@ -1,47 +1,24 @@
 import logging
-from typing import Dict, Optional
-from functools import partial
+from typing import Dict, Optional, Any, List
 
 from agent_resources.base_agent import Agent
-from agent_resources.state_types import ImageAgentState
-from langgraph.graph import StateGraph, END
-from langchain_core.messages import SystemMessage, HumanMessage
-from agent_resources.prompts import QUERY_EXTRACTION_PROMPT
+from agent_resources.state_types import SupervisorAgentState
+from agent_resources.agents.marketing_agent.analysis_agent import AnalysisAgent
+from agent_resources.agents.marketing_agent.image_agent import ImageAgent
+from agent_resources.agents.marketing_agent.html_agent import HTMLAgent
+
+from langgraph.graph import StateGraph, START, END
 
 logger = logging.getLogger(__name__)
 
-async def generate_query_node(state: ImageAgentState, llm) -> dict:
-    summary = state["summary"]
-    prompt = QUERY_EXTRACTION_PROMPT.format(summary=summary)
-    msgs = [
-        SystemMessage(content=prompt),
-        HumanMessage(content="Please provide exactly the search query."),
-    ]
-    if hasattr(llm, "ainvoke"):
-        resp = await llm.ainvoke(msgs)
-    else:
-        resp = llm.invoke(msgs)
-    query = resp.content.strip()
-    logger.info(f"Generated search query: {query}")
-    return {"query": query}
-
-async def image_search_node(state: ImageAgentState, image_tool) -> dict:
-    query = state["query"]
-    args = {"query": query}
-    if hasattr(image_tool, "ainvoke"):
-        images = await image_tool.ainvoke(args)
-    else:
-        images = image_tool.invoke(args)
-    return {"images": images}
-
-class ImageAgent(Agent):
+class SupervisorAgent(Agent):
     def __init__(
         self,
         llm_configs: Dict[str, dict],
         memory=None,
         thread_id: Optional[str] = None,
-        tools=None,
-        name: str = "image_search_agent",
+        tools: Optional[List[Any]] = None,
+        name: str = "supervisor_agent",
         **kwargs,
     ):
         self.use_llm_provider = kwargs.get("use_llm_provider", False)
@@ -50,32 +27,92 @@ class ImageAgent(Agent):
         self._build_llm_dict(llm_configs)
         self.memory = memory
         self.thread_id = thread_id or "default"
-        self.image_tool = next(
-            (t for t in self.tools if getattr(t, "name", "") == "image_search"),
-            None
+
+        # find the single image_search MCP tool
+        image_tools = [t for t in self.tools if getattr(t, "name", "") == "image_search"]
+        if not image_tools:
+            raise RuntimeError("Supervisor requires the 'image_search' MCP tool")
+
+        # initialize subagents
+        self.analysis_agent = AnalysisAgent(
+            llm_configs=llm_configs,
+            memory=memory,
+            thread_id=self.thread_id,
+            tools=[],
+            use_llm_provider=self.use_llm_provider,
         )
-        if self.image_tool is None:
-            raise RuntimeError("image_search tool must be provided")
+        self.image_agent = ImageAgent(
+            llm_configs=llm_configs,
+            memory=memory,
+            thread_id=self.thread_id,
+            tools=image_tools,
+            use_llm_provider=self.use_llm_provider,
+        )
+        self.html_agent = HTMLAgent(
+            llm_configs=llm_configs,
+            memory=memory,
+            thread_id=self.thread_id,
+            tools=[],
+            use_llm_provider=self.use_llm_provider,
+        )
+
+        # build and compile graph
         self.state_graph = self.build_graph()
 
     def build_graph(self):
-        llm = self.llm_dict["default_llm"]
-        image_tool = self.image_tool
+        sg = StateGraph(SupervisorAgentState)
 
-        sg = StateGraph(ImageAgentState)
-        sg.add_node("generate_query", partial(generate_query_node, llm=llm))
-        sg.add_node("image_search", partial(image_search_node, image_tool=image_tool))
-        sg.set_entry_point("generate_query")
-        sg.add_edge("generate_query", "image_search")
-        sg.add_edge("image_search", END)
+        # Step 1: Analysis
+        async def run_analysis_step(state):
+            messages = state.get("messages", [])
+            if not messages:
+                raise ValueError("No messages found for analysis")
+            analysis_out = await self.analysis_agent.ainvoke(messages=messages)
+            return {"analysis": analysis_out}
+
+        sg.add_node("run_analysis", run_analysis_step)
+        sg.set_entry_point("run_analysis")
+
+        # Step 2: Image search
+        async def run_image_step(state):
+            summary = state["analysis"]["summary"]
+            image_out = await self.image_agent.ainvoke(summary)
+            return {
+                "image_query": image_out["query"],
+                "images": image_out["images"],
+            }
+
+        sg.add_node("run_image", run_image_step)
+        sg.add_edge("run_analysis", "run_image")
+
+        # Step 3: HTML generation
+        async def run_html_step(state):
+            summary = state["analysis"]["summary"]
+            images = state.get("images", [])
+            if not images:
+                raise ValueError("No images available for HTML generation")
+            html_out = await self.html_agent.ainvoke(summary, images[0])
+            return {"html": html_out["html"]}
+
+        sg.add_node("run_html", run_html_step)
+        sg.add_edge("run_image", "run_html")
+
+        # Step 4: Assemble final state
+        def assemble(state):
+            return {
+                "messages": state.get("messages", []),
+                "analysis": state["analysis"],
+                "image_query": state["image_query"],
+                "images": state["images"],
+                "html": state["html"],
+            }
+
+        sg.add_node("assemble", assemble)
+        sg.add_edge("run_html", "assemble")
+        sg.add_edge("assemble", END)
 
         return sg.compile()
 
-    async def ainvoke(self, summary: str):
-        init_state: ImageAgentState = {
-            "summary": summary,
-            "query": "",
-            "images": [],
-            "messages": [],
-        }
-        return await self.state_graph.ainvoke(init_state)
+    async def ainvoke(self, messages):
+        logger.debug(f"[SupervisorAgent] Starting with {len(messages)} message(s)")
+        return await self.state_graph.ainvoke({"messages": messages})
