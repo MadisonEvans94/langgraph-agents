@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # ---------- Config ----------
-PDF_PATH="agent_resources/agents/marketing_agent/sample_input.pdf"
-ENDPOINT="${1:-http://127.0.0.1:8001/run_supervisor}"
+PDF_PATH="sample_input.pdf"
+ENDPOINT="${1:-http://127.0.0.1:8001/run_marketing_agent}"
 
 # ---------- Sanity checks ----------
 if [[ ! -f "$PDF_PATH" ]]; then
