@@ -45,8 +45,8 @@ echo "$response" | jq -r '.images[]'
 echo
 
 # ---------- Save HTML ----------
-HTML_FILE="supervisor_output.html"
+HTML_FILE="marketing_agent_output.html"
 echo "$response" | jq -r '.html' > "$HTML_FILE"
 echo "📄 HTML saved to $HTML_FILE"
-echo "🌐 Opening in browser..."
-open "$HTML_FILE"
+# echo "🌐 Opening in browser..."
+# xdg-open "$HTML_FILE"
