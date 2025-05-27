@@ -1,6 +1,6 @@
 import logging
 from typing import Iterator, Union
-
+from langchain_openai import ChatOpenAI
 from langchain_core.messages import BaseMessage, AIMessage, AIMessageChunk
 from langchain_core.messages.utils import convert_to_openai_messages
 from pydantic import BaseModel
@@ -37,7 +37,7 @@ class ChatVLLMWrapper:
         self.bound_tools = None
 
         logger.info(
-            f"🚀 ChatVLLMWrapper initialized | model={model}, streaming={streaming}, "
+            f"ChatVLLMWrapper initialized | model={model}, streaming={streaming}, "
             f"max_new_tokens={max_new_tokens}, temp={temperature}, top_p={top_p}, rep_penalty={repetition_penalty}"
         )
 
@@ -79,18 +79,18 @@ class ChatVLLMWrapper:
             params["functions"] = self._convert_tools_to_functions()
 
         if not self.streaming:
-            logger.info(f"🟢 [ChatVLLMWrapper] Invoking (non-stream) with parameters: {params}")
+            logger.info(f"[ChatVLLMWrapper] Invoking (non-stream) with parameters: {params}")
             try:
                 response = self.client.chat.completions.create(**params)
-                logger.info(f"✅ Received non-stream response: {response}")
+                logger.info(f"Received non-stream response: {response}")
                 content = response.choices[0].message.content
-                logger.info(f"✅ Extracted content (first 50 chars): {content[:50]!r}")
+                logger.info(f"Extracted content (first 50 chars): {content[:50]!r}")
                 return AIMessage(content=content.strip() if content else "")
             except Exception as e:
-                logger.error(f"❌ Error during non-stream invocation: {e}", exc_info=True)
+                logger.error(f"Error during non-stream invocation: {e}", exc_info=True)
                 raise
         else:
-            logger.info(f"🟡 [ChatVLLMWrapper] Invoking (stream) with parameters: {params}")
+            logger.info(f"[ChatVLLMWrapper] Invoking (stream) with parameters: {params}")
             return self._stream_generator(params)
 
     def _stream_generator(
@@ -101,9 +101,9 @@ class ChatVLLMWrapper:
         then yields `AIMessageChunk(content=...)` for each partial token received.
         """
         try:
-            logger.info("🔄 Starting streaming call to vLLM endpoint...")
+            logger.info("Starting streaming call to vLLM endpoint...")
             stream_resp = self.client.chat.completions.create(**params)
-            logger.info("🔄 Streaming response object received.")
+            logger.info("Streaming response object received.")
 
             for i, chunk in enumerate(stream_resp):
                 logger.debug(f"Chunk {i}: {chunk}")
@@ -116,16 +116,16 @@ class ChatVLLMWrapper:
 
                 if "content" in delta_obj:
                     partial_text = delta_obj["content"]
-                    logger.info(f"📌 Received streaming chunk {i}: {partial_text!r}")
+                    logger.info(f"Received streaming chunk {i}: {partial_text!r}")
                     yield AIMessageChunk(content=partial_text)
 
                 finish_reason = choice.get("finish_reason", None)
                 if finish_reason in ("stop", "finished"):
-                    logger.info(f"✅ Finish reason received in chunk {i}: {finish_reason}. Ending stream.")
+                    logger.info(f"Finish reason received in chunk {i}: {finish_reason}. Ending stream.")
                     break
 
         except Exception as e:
-            logger.error(f"❌ Error during streaming: {e}", exc_info=True)
+            logger.error(f"Error during streaming: {e}", exc_info=True)
             raise
 
     def _convert_tools_to_functions(self):
@@ -147,3 +147,26 @@ class ChatVLLMWrapper:
             functions.append(func_def)
         logger.info(f"Converted {len(functions)} tools to function definitions.")
         return functions
+
+def make_llm(config: dict, use_llm_provider: bool) -> ChatOpenAI:
+    model_id = config.get("model_id") or config.get("model")
+    if model_id is None:
+        raise ValueError("LLM config must include 'model_id' or 'model'.")
+    temperature = config.get("temperature", 0.7)
+    max_new_tokens = config.get("max_new_tokens") or config.get("max_tokens", 512)
+    api_key = config.get("api_key", "")
+    base_url = config.get("base_url")
+    params = dict(
+        model=model_id,
+        temperature=temperature,
+        max_tokens=max_new_tokens,
+        timeout=None,
+        max_retries=2,
+        streaming=True,
+        api_key=api_key or "EMPTY",
+    )
+    if not use_llm_provider:
+        if not base_url:
+            raise ValueError(f"When using vLLM, 'base_url' is required for model {model_id}.")
+        params["api_base"] = base_url
+    return ChatOpenAI(**params)
