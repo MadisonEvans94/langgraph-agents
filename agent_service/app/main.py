@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 from agent_resources.agent_factory import AgentFactory
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from .models import QueryRequest, QueryResponse
 from .utils import load_llm_configs
 from langgraph.checkpoint.memory import MemorySaver
@@ -69,66 +69,79 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Agent MCP Client", lifespan=lifespan)
 
-class SupervisorResponse(BaseModel):
-    summary: str
-    key_points: list[str]
-    domain: str
-    image_query: str | None
-    images: list[str]
+class MarketingAgentResponse(BaseModel):
     html: str
 
-@app.post("/run_marketing_agent", response_model=SupervisorResponse)
-async def run_supervisor(file: UploadFile = File(...)):
-    # 1. Validate & save incoming PDF
+@app.post("/run_marketing_agent", response_model=MarketingAgentResponse)
+async def run_marketing_agent(file: UploadFile = File(...)):
+    # 1. Basic validation + temp-save the upload
     if file.content_type != "application/pdf":
         raise HTTPException(status_code=415, detail="File must be a PDF")
-    suffix = os.path.splitext(file.filename)[1] or ".pdf"
-    tmp_dir = tempfile.mkdtemp(prefix="upload_")
-    tmp_path = os.path.join(tmp_dir, f"{uuid.uuid4()}{suffix}")
-    with open(tmp_path, "wb") as out:
+
+    suffix   = os.path.splitext(file.filename)[1] or ".pdf"
+    tmp_dir  = tempfile.mkdtemp(prefix="upload_")
+    pdf_path = os.path.join(tmp_dir, f"{uuid.uuid4()}{suffix}")
+    with open(pdf_path, "wb") as out:
         shutil.copyfileobj(file.file, out)
 
-    # 2. Load & split document
+    # 2. Load & chunk PDF
     try:
-        loader = PyPDFLoader(tmp_path)
-        docs = loader.load()
-        splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=200)
-        chunks: List[Document] = splitter.split_documents(docs)
+        docs      = PyPDFLoader(pdf_path).load()
+        splitter  = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=200)
+        chunks    = splitter.split_documents(docs)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to process PDF: {e}")
 
-    # 3. Instantiate the supervisor agent
+    # 3. Build the marketing pipeline agent
     svc_agent = agent_factory.factory(
-        agent_type="supervisor_agent",
+        agent_type="marketing_agent",
         thread_id=str(uuid.uuid4()),
         use_llm_provider=USE_LLM_PROVIDER,
         llm_configs=llm_configs,
         tools=app.state.tools,
     )
 
-    # 4. Concatenate all chunks into full text
-    full_text = "\n\n".join(chunk.page_content for chunk in chunks)
-    messages = [HumanMessage(content=full_text)]
-    
-    # 5. Run the full PDF→analysis→image search→html generation flow
-    result = await svc_agent.ainvoke(messages)
+    # 4. Invoke it on the whole PDF text
+    full_text   = "\n\n".join(c.page_content for c in chunks)
+    result_state = await svc_agent.ainvoke([HumanMessage(content=full_text)])
 
-    # 6. Clean up
+    # 5. Pull the HTML snippet out of the returned messages
+    html_msg = next(
+        (
+            m for m in reversed(result_state["messages"])
+            if isinstance(m, AIMessage) and m.content.lstrip().startswith("<")
+        ),
+        None,
+    )
+    if html_msg is None:
+        raise HTTPException(status_code=500, detail="Agent did not return HTML")
+
+    html      = html_msg.content
+    image_url = result_state.get("image_url")  # convenience export
+
+    # 6. Persist HTML on the server (optional but handy)
+    OUTPUT_DIR = "/tmp/marketing_outputs"
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+    html_filename = f"{uuid.uuid4()}.html"
+    html_path     = os.path.join(OUTPUT_DIR, html_filename)
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(html)
+
+    logger.success(f"HTML saved → {html_path}")
+
+    # 7. Clean up the upload tmpdir
     try:
-        os.remove(tmp_path)
+        os.remove(pdf_path)
         os.rmdir(tmp_dir)
     except OSError:
         pass
 
-    # 7. Unpack and return
-    analysis = result.get("analysis", {})
-    return SupervisorResponse(
-        summary=analysis.get("summary", ""),
-        key_points=analysis.get("key_points", []),
-        domain=analysis.get("domain", ""),
-        image_query=result.get("image_query"),
-        images=result.get("images", []),
-        html=result.get("html", "")
+    # 8. Send tidy JSON back to the caller
+    return MarketingAgentResponse(
+        html=html,
+        html_path=html_path,
+        image_url=image_url,
     )
         
 @app.post("/invoke")

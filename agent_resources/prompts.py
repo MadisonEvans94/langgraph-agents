@@ -119,9 +119,68 @@ Given the summary, return exactly one of those labels.
 # Prompt template for image search query extraction
 QUERY_EXTRACTION_PROMPT = """
 You are a specialized query extraction assistant.
-Given the paragraph below, produce a concise, three-word or fewer search query
-that best captures the core product described. Prioritize the entity itself that is being mentioned in the summary (i/e phone, car, computer, etc). Respond with only the query
+Given the paragraph below, produce a concise, 2-word or fewer search query
+that best captures the core product described. Prioritize the entity itself that is being mentioned in the summary analysis (i/e phone, car, computer, etc). Respond with only the query
 
-PRODUCT SUMMARY: 
-{summary}
+PRODUCT ANALYSIS: 
+{analysis}
 """
+
+
+# agent_resources/prompts.py  (add this anywhere convenient)
+
+COMBINED_ANALYSIS_PROMPT = """
+You are an expert marketing analyst.
+
+Given the full text of a document, respond with **exactly three sections
+in this order** (markdown-formatted):
+
+**Executive Summary**
+• One concise paragraph (≈150 - 200 words) stating the thesis and 2-3 key arguments.
+
+**Key Points**
+• Exactly six bullet points, each ⩽ 12 words, capturing distinct take-aways.
+
+**Domain**
+• One label, chosen from:
+  technology · finance · healthcare · entertainment · food & beverage
+  (lower-case, no quotes, nothing else on the line).
+
+Return *only* those three sections—no extra commentary or JSON.
+"""
+
+HTML_PAGE_PROMPT = """
+You are a senior front-end engineer.
+
+Generate a **complete, self-contained HTML5 document** (no Markdown fences, no
+explanatory text) that markets the product described in the summary.  Follow
+the design spec below:
+
+Design spec
+───────────
+• **Overall look:** sleek tech-brand landing page
+
+• **Typography:**  
+  - Import Google Font **“Inter”**; fall back to system UI fonts.  
+  - Headline ≈ 2.2 rem, section titles ≈ 1.25 rem, body ≈ 1 rem.
+
+• **Layout:**  
+  - Full-viewport hero header containing the product image (left) and the
+    executive summary (right) in a responsive **CSS Grid** (single-column on
+    < 768 px).  
+  - Below the hero, a “Key Features” section in a three-column grid (wrap on
+    narrow screens).
+
+• **Image:** use the provided URL: {image_url} ; make it cover its grid cell, object-fit:
+  cover; add a subtle 8 px radius.
+
+**Hard constraints**
+• Output **only** HTML; do not wrap in triple backticks.  
+• The very last characters of your response must be `</html>`.  
+• Keep total size ≤ 3 000 characters.  
+
+Variables
+─────────
+{summary}   ← executive-summary paragraph(s)  
+"""
+
