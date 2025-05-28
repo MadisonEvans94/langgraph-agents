@@ -184,3 +184,14 @@ Variables
 {summary}   ← executive-summary paragraph(s)  
 """
 
+JSON_EXTRACTION_PROMPT = """
+You are a marketing-copy assistant. Given the analysis below, extract exactly three fields
+and return them as a single JSON object with these keys:
+
+1. "tagline": a punchy marketing tagline (≤12 words)
+2. "features": an array of exactly three feature phrases (≤5 words each)
+3. "why": a 2-3 sentence paragraph starting "Why PlayStation 5?" that sells the product
+
+ANALYSIS:
+{analysis}
+"""

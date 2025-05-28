@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import json
 from functools import partial
 from typing import Any, Dict, List, Optional
 
@@ -11,57 +12,11 @@ from langgraph.graph import StateGraph, END
 
 from agent_resources.base_agent import Agent
 from agent_resources.state_types import MarketingAgentState
-from agent_resources.prompts import COMBINED_ANALYSIS_PROMPT, QUERY_EXTRACTION_PROMPT
+from agent_resources.prompts import COMBINED_ANALYSIS_PROMPT, QUERY_EXTRACTION_PROMPT, JSON_EXTRACTION_PROMPT
 
 logger = logging.getLogger(__name__)
 
-# ── CORE NODES ────────────────────────────────────────
-
-async def analysis_node(state: MarketingAgentState, *, llm) -> Dict:
-    prompt_stack = [
-        SystemMessage(content=COMBINED_ANALYSIS_PROMPT),
-        *state["messages"],
-    ]
-    resp = await llm.ainvoke(prompt_stack) if hasattr(llm, "ainvoke") else llm.invoke(prompt_stack)
-    if not isinstance(resp, AIMessage):
-        resp = AIMessage(content=str(resp.content))
-    return {
-        "messages": [resp],
-        "analysis": resp.content,
-    }
-
-async def generate_query_node(state: MarketingAgentState, *, llm) -> Dict:
-    prompt = QUERY_EXTRACTION_PROMPT.format(analysis=state["analysis"])
-    msgs = [
-        SystemMessage(content=prompt),
-        HumanMessage(content="Please provide exactly the search query."),
-    ]
-    resp = await llm.ainvoke(msgs) if hasattr(llm, "ainvoke") else llm.invoke(msgs)
-    query = resp.content.strip()
-    logger.info(f"[MarketingAgent] generated image search query: {query}")
-    return {"messages": [AIMessage(content=query)]}
-
-async def image_search_node(state: MarketingAgentState, *, image_tool) -> Dict:
-    query_txt = state["messages"][-1].content
-    result = await image_tool.ainvoke({"query": query_txt}) if hasattr(image_tool, "ainvoke") else image_tool.invoke({"query": query_txt})
-    url = (
-        result[0] if isinstance(result, list) and result
-        else result.get("url", "") if isinstance(result, dict)
-        else str(result)
-    )
-    logger.info(f"[MarketingAgent] selected image URL: {url}")
-    return {
-        "messages": [AIMessage(content=f"[image_url] {url}")],
-        "image_url": url,
-    }
-
-async def inject_summary_node(state: MarketingAgentState) -> Dict:
-    # Push the analysis content back into messages so our render step can reuse it
-    return {"messages": [AIMessage(content=state["analysis"])]}
-
-
-# ── DETERMINISTIC HTML TEMPLATE ──────────────────────
-
+# DETERMINISTIC HTML TEMPLATE 
 TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -112,55 +67,78 @@ TEMPLATE = """<!DOCTYPE html>
   </div>
 </body>
 </html>"""
+_TEMPLATE = jinja2.Template(TEMPLATE)
+
+
+# CORE NODES
+
+async def analysis_node(state: MarketingAgentState, *, llm) -> Dict:
+    prompt_stack = [
+        SystemMessage(content=COMBINED_ANALYSIS_PROMPT),
+        *state["messages"],
+    ]
+    resp = await llm.ainvoke(prompt_stack) if hasattr(llm, "ainvoke") else llm.invoke(prompt_stack)
+    if not isinstance(resp, AIMessage):
+        resp = AIMessage(content=str(resp.content))
+    return {"messages": [resp], "analysis": resp.content}
+
+
+async def generate_query_node(state: MarketingAgentState, *, llm) -> Dict:
+    prompt = QUERY_EXTRACTION_PROMPT.format(analysis=state["analysis"])
+    msgs = [
+        SystemMessage(content=prompt),
+        HumanMessage(content="Please provide exactly the search query."),
+    ]
+    resp = await llm.ainvoke(msgs) if hasattr(llm, "ainvoke") else llm.invoke(msgs)
+    query = resp.content.strip()
+    logger.info(f"[MarketingAgent] generated image search query: {query}")
+    return {"messages": [AIMessage(content=query)]}
+
+
+async def image_search_node(state: MarketingAgentState, *, image_tool) -> Dict:
+    query_txt = state["messages"][-1].content
+    result = await image_tool.ainvoke({"query": query_txt}) if hasattr(image_tool, "ainvoke") else image_tool.invoke({"query": query_txt})
+    url = (
+        result[0] if isinstance(result, list) and result
+        else result.get("url", "") if isinstance(result, dict)
+        else str(result)
+    )
+    logger.info(f"[MarketingAgent] selected image URL: {url}")
+    return {"messages": [AIMessage(content=f"[image_url] {url}")], "image_url": url}
+
+
+async def inject_summary_node(state: MarketingAgentState) -> Dict:
+    return {"messages": [AIMessage(content=state["analysis"])]}
+
+
+# RENDER WITH SINGLE JSON EXTRACTION CALL
 
 async def render_html_node(state: MarketingAgentState, *, llm) -> Dict:
-    analysis = state["messages"][-1].content
+    analysis  = state["messages"][-1].content
     image_url = state["image_url"]
 
-    # 1) Generate tagline
-    tag_resp = await llm.ainvoke([
-        SystemMessage(content=(
-            "From this analysis, write a punchy marketing tagline (≤12 words). "
-            f"\n\nANALYSIS:\n{analysis}"
-        ))
-    ])
-    tagline = tag_resp.content.strip()
+    # fill the prompt template
+    prompt = JSON_EXTRACTION_PROMPT.format(analysis=analysis)
+    resp   = await llm.ainvoke([SystemMessage(content=prompt)]) \
+             if hasattr(llm, "ainvoke") else llm.invoke([SystemMessage(content=prompt)])
+    data   = json.loads(resp.content)
 
-    # 2) Generate features
-    feat_resp = await llm.ainvoke([
-        SystemMessage(content=(
-            "List exactly three feature phrases (≤5 words each), comma-separated. "
-            f"\n\nANALYSIS:\n{analysis}"
-        ))
-    ])
-    features = [f.strip() for f in feat_resp.content.split(",")]
-
-    # 3) Generate “why” paragraph
-    why_resp = await llm.ainvoke([
-        SystemMessage(content=(
-            "Write a 2–3 sentence paragraph starting “Why PlayStation 5?” "
-            f"that sells this product based on the analysis.\n\nANALYSIS:\n{analysis}"
-        ))
-    ])
-    why = why_resp.content.strip()
-
-    # 4) Render final HTML
-    html = jinja2.Template(TEMPLATE).render(
+    html = _TEMPLATE.render(
         title="PlayStation 5",
-        tagline=tagline,
+        tagline=data["tagline"],
         image_url=image_url,
-        features=features,
-        why=why,
+        features=data["features"],
+        why=data["why"],
     )
-
     return {"messages": [AIMessage(content=html)]}
 
 
-# ── MAIN AGENT ────────────────────────────────────────
+# MAIN AGENT 
 
 class MarketingAgent(Agent):
     """
-    analysis → generate_query → image_search → inject_summary → render_html → END
+    analysis → generate_query → image_search → inject_summary
+             → render_html → END
     """
 
     def __init__(
@@ -174,27 +152,27 @@ class MarketingAgent(Agent):
         **kwargs,
     ):
         self.use_llm_provider = kwargs.get("use_llm_provider", False)
-        self.name = name
+        self.name  = name
         self.tools = tools or []
         self._build_llm_dict(llm_configs)
-        self.memory = memory
+        self.memory    = memory
         self.thread_id = thread_id or "default"
 
         self.image_tool = next((t for t in self.tools if getattr(t, "name", "") == "image_search"), None)
-        if not self.image_tool:
+        if self.image_tool is None:
             raise RuntimeError("MarketingAgent requires an 'image_search' MCP tool")
 
         self.state_graph = self.build_graph()
 
     def build_graph(self):
         llm = self.llm_dict["default_llm"]
-        sg = StateGraph(MarketingAgentState)
+        sg  = StateGraph(MarketingAgentState)
 
-        sg.add_node("analyze_text",   partial(analysis_node, llm=llm))
+        sg.add_node("analyze_text",   partial(analysis_node,    llm=llm))
         sg.add_node("generate_query", partial(generate_query_node, llm=llm))
-        sg.add_node("image_search",   partial(image_search_node, image_tool=self.image_tool))
+        sg.add_node("image_search",   partial(image_search_node,  image_tool=self.image_tool))
         sg.add_node("inject_summary", inject_summary_node)
-        sg.add_node("render_html",    partial(render_html_node, llm=llm))
+        sg.add_node("render_html",    partial(render_html_node,   llm=llm))
 
         sg.set_entry_point("analyze_text")
         sg.add_edge("analyze_text",   "generate_query")
