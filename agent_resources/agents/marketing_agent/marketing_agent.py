@@ -5,69 +5,18 @@ import logging
 import json
 from functools import partial
 from typing import Any, Dict, List, Optional
-
 import jinja2
 from langchain_core.messages import AnyMessage, AIMessage, HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, END
-
+from .constants import HTML_TEMPLATE
 from agent_resources.base_agent import Agent
 from agent_resources.state_types import MarketingAgentState
 from agent_resources.prompts import COMBINED_ANALYSIS_PROMPT, QUERY_EXTRACTION_PROMPT, JSON_EXTRACTION_PROMPT
 
 logger = logging.getLogger(__name__)
 
-# DETERMINISTIC HTML TEMPLATE 
-TEMPLATE = """<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{{ title }}</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f9f9f9; }
-    .container { max-width: 800px; margin: 50px auto; padding: 20px; background-color: #fff; border-radius: 8px;
-                 box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    .header { display: flex; flex-wrap: wrap; align-items: center; gap: 20px; margin-bottom: 30px; }
-    .hero-text { flex: 1; }
-    .hero-text .tagline { font-size: 1.25rem; color: #555; margin-top: 8px; }
-    .hero-image { flex: 1; text-align: center; }
-    .hero-image img { max-width: 100%; border-radius: 8px; }
-    .features { display: flex; justify-content: space-between; margin: 30px 0; }
-    .features ul { display: flex; flex: 1; gap: 20px; padding: 0; margin: 0; }
-    .feature-item { list-style: none; flex: 1; text-align: center; }
-    .feature-item::before { content: '•'; display: block; font-size: 2rem; color: #007BFF; margin-bottom: 8px; }
-    .why-section { background-color: #f1f1f1; padding: 20px; border-radius: 8px; }
-    .why-section h2 { margin-top: 0; font-size: 1.5rem; }
-    .cta-button { display: inline-block; margin-top: 20px; padding: 10px 20px;
-                  background-color: #007BFF; color: #fff; text-decoration: none; border-radius: 4px; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <section class="header">
-      <div class="hero-text">
-        <h1 class="title">{{ title }}</h1>
-        <p class="tagline">{{ tagline }}</p>
-      </div>
-      <div class="hero-image">
-        <img src="{{ image_url }}" alt="{{ title }} Console">
-      </div>
-    </section>
-    <section class="features">
-      <ul>
-      {% for feat in features %}
-        <li class="feature-item">{{ feat }}</li>
-      {% endfor %}
-      </ul>
-    </section>
-    <section class="why-section">
-      <h2>Why {{ title }}?</h2>
-      <p>{{ why }}</p>
-    </section>
-  </div>
-</body>
-</html>"""
-_TEMPLATE = jinja2.Template(TEMPLATE)
+
+_TEMPLATE = jinja2.Template(HTML_TEMPLATE)
 
 
 # CORE NODES
@@ -111,17 +60,15 @@ async def inject_summary_node(state: MarketingAgentState) -> Dict:
     return {"messages": [AIMessage(content=state["analysis"])]}
 
 
-# RENDER WITH SINGLE JSON EXTRACTION CALL
-
 async def render_html_node(state: MarketingAgentState, *, llm) -> Dict:
     analysis  = state["messages"][-1].content
     image_url = state["image_url"]
 
     # fill the prompt template
     prompt = JSON_EXTRACTION_PROMPT.format(analysis=analysis)
-    resp   = await llm.ainvoke([SystemMessage(content=prompt)]) \
+    resp = await llm.ainvoke([SystemMessage(content=prompt)]) \
              if hasattr(llm, "ainvoke") else llm.invoke([SystemMessage(content=prompt)])
-    data   = json.loads(resp.content)
+    data = json.loads(resp.content)
 
     html = _TEMPLATE.render(
         title="PlayStation 5",
@@ -152,10 +99,10 @@ class MarketingAgent(Agent):
         **kwargs,
     ):
         self.use_llm_provider = kwargs.get("use_llm_provider", False)
-        self.name  = name
+        self.name = name
         self.tools = tools or []
         self._build_llm_dict(llm_configs)
-        self.memory    = memory
+        self.memory = memory
         self.thread_id = thread_id or "default"
 
         self.image_tool = next((t for t in self.tools if getattr(t, "name", "") == "image_search"), None)
@@ -168,18 +115,18 @@ class MarketingAgent(Agent):
         llm = self.llm_dict["default_llm"]
         sg  = StateGraph(MarketingAgentState)
 
-        sg.add_node("analyze_text",   partial(analysis_node,    llm=llm))
+        sg.add_node("analyze_text", partial(analysis_node,    llm=llm))
         sg.add_node("generate_query", partial(generate_query_node, llm=llm))
-        sg.add_node("image_search",   partial(image_search_node,  image_tool=self.image_tool))
+        sg.add_node("image_search", partial(image_search_node,  image_tool=self.image_tool))
         sg.add_node("inject_summary", inject_summary_node)
-        sg.add_node("render_html",    partial(render_html_node,   llm=llm))
+        sg.add_node("render_html", partial(render_html_node,   llm=llm))
 
         sg.set_entry_point("analyze_text")
-        sg.add_edge("analyze_text",   "generate_query")
+        sg.add_edge("analyze_text", "generate_query")
         sg.add_edge("generate_query", "image_search")
-        sg.add_edge("image_search",   "inject_summary")
+        sg.add_edge("image_search", "inject_summary")
         sg.add_edge("inject_summary","render_html")
-        sg.add_edge("render_html",     END)
+        sg.add_edge("render_html", END)
 
         return sg.compile()
 

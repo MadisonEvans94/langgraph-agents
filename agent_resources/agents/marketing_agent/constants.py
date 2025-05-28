@@ -1,9 +1,10 @@
-<!DOCTYPE html>
+# DETERMINISTIC HTML TEMPLATE 
+HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PlayStation 5</title>
+  <title>{{ title }}</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f9f9f9; }
     .container { max-width: 800px; margin: 50px auto; padding: 20px; background-color: #fff; border-radius: 8px;
@@ -27,28 +28,24 @@
   <div class="container">
     <section class="header">
       <div class="hero-text">
-        <h1 class="title">PlayStation 5</h1>
-        <p class="tagline">Unleash peak efficiency with Intel Core Ultra processors</p>
+        <h1 class="title">{{ title }}</h1>
+        <p class="tagline">{{ tagline }}</p>
       </div>
       <div class="hero-image">
-        <img src="https://via.placeholder.com/400x300?text=No+Image" alt="PlayStation 5 Console">
+        <img src="{{ image_url }}" alt="{{ title }} Console">
       </div>
     </section>
     <section class="features">
       <ul>
-      
-        <li class="feature-item">Intel Arc Graphics with ray tracing</li>
-      
-        <li class="feature-item">AI Boost NPU up to 11 TOPS</li>
-      
-        <li class="feature-item">AI-assisted tools for creative workflows</li>
-      
+      {% for feat in features %}
+        <li class="feature-item">{{ feat }}</li>
+      {% endfor %}
       </ul>
     </section>
     <section class="why-section">
-      <h2>Why PlayStation 5?</h2>
-      <p>Why PlayStation 5? Experience the future of computing with Intel Core Ultra processors, combining CPU, GPU, and NPU for unparalleled efficiency. From advanced ray tracing to AI-powered tools in Adobe Creative Cloud, these processors deliver top-tier performance for content creation and modern gaming. Say goodbye to cloud processing reliance and hello to enhanced privacy and seamless integration with leading frameworks.</p>
+      <h2>Why {{ title }}?</h2>
+      <p>{{ why }}</p>
     </section>
   </div>
 </body>
-</html>
+</html>"""

@@ -58,29 +58,6 @@ def fibonacci(n: int) -> list[int]:
         seq.append(seq[-1] + seq[-2])
     return seq[:n]
 
-# TODO: Update the description for the extract_pdf tool 
-@mcp.tool(description="Load a PDF (or .txt) and return a list of ~1500 char Document chunks.")
-def extract_pdf(path: str) -> str:
-    """
-    Ingest a .pdf or .txt file located at *path* and return a concise
-    ~300-word executive summary.  Uses map-reduce summarisation so it
-    scales to large documents.
-    """
-    # 1. Load document(s)
-    if path.lower().endswith(".pdf"):
-        docs = PyPDFLoader(path).load()
-    else:
-        docs = TextLoader(path).load()
-
-    # 2. Split into manageable chunks
-    splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1500,
-        chunk_overlap=200,
-    )
-    chunks : Iterable[Document] = splitter.split_documents(docs)
-
-    return chunks
-
 @mcp.tool(
     description="Search for images via Unsplash API. Returns a list of image URLs."
 )
@@ -94,27 +71,32 @@ async def image_search(
     """
     access_key = os.getenv("UNSPLASH_ACCESS_KEY")
     if not access_key:
-        raise RuntimeError("Missing UNSPLASH_ACCESS_KEY")
-    endpoint = "https://api.unsplash.com/search/photos"
-    headers = {"Authorization": f"Client-ID {access_key}"}
-    params = {
-        "query": query,
-        "per_page": per_page,
-        "page": page,
-        "order_by": "relevant",  
-    }
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(endpoint, headers=headers, params=params, timeout=10.0)
-        resp.raise_for_status()
-        data = resp.json()
-    return [photo["urls"]["regular"] for photo in data.get("results", [])]
+        logger.warning("[image_search] No UNSPLASH_ACCESS_KEY found. Returning dummy image.")
+        return ["https://via.placeholder.com/400x300?text=No+Image"]
 
+    try:
+        endpoint = "https://api.unsplash.com/search/photos"
+        headers = {"Authorization": f"Client-ID {access_key}"}
+        params = {
+            "query": query,
+            "per_page": per_page,
+            "page": page,
+            "order_by": "relevant",  
+        }
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(endpoint, headers=headers, params=params, timeout=10.0)
+            resp.raise_for_status()
+            data = resp.json()
+        return [photo["urls"]["regular"] for photo in data.get("results", [])]
+    except Exception as e:
+        logger.warning(f"[image_search] Unsplash API failed: {e}")
+        return ["https://via.placeholder.com/400x300?text=No+Image"]
+    
 if __name__ == "__main__":
     port = int(os.getenv("MCP_SERVER_PORT", 8002))
     uvicorn.run(
         mcp.sse_app(),
         host="0.0.0.0",
         port=port,
-        # leave log_config as default so Uvicorn’s HTTP/ASGI logs remain intact
         log_level="info",
     )
