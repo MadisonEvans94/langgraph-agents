@@ -64,20 +64,20 @@ async def render_html_node(state: MarketingAgentState, *, llm) -> Dict:
     analysis  = state["messages"][-1].content
     image_url = state["image_url"]
 
-    # fill the prompt template
+    # Ask the LLM for title, tagline, features, why—all at once
     prompt = JSON_EXTRACTION_PROMPT.format(analysis=analysis)
-    resp = await llm.ainvoke([SystemMessage(content=prompt)]) \
-             if hasattr(llm, "ainvoke") else llm.invoke([SystemMessage(content=prompt)])
-    data = json.loads(resp.content)
+    resp   = await llm.ainvoke([SystemMessage(content=prompt)]) if hasattr(llm, "ainvoke") else llm.invoke([SystemMessage(content=prompt)])
+    data   = json.loads(resp.content)
 
     html = _TEMPLATE.render(
-        title="PlayStation 5",
-        tagline=data["tagline"],
-        image_url=image_url,
-        features=data["features"],
-        why=data["why"],
+        title    = data["title"],
+        tagline  = data["tagline"],
+        image_url= image_url,
+        features = data["features"],
+        why      = data["why"],
     )
     return {"messages": [AIMessage(content=html)]}
+
 
 
 # MAIN AGENT 

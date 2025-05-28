@@ -185,12 +185,13 @@ Variables
 """
 
 JSON_EXTRACTION_PROMPT = """
-You are a marketing-copy assistant. Given the analysis below, extract exactly three fields
+You are a marketing-copy assistant. Given the analysis below, extract exactly four fields
 and return them as a single JSON object with these keys:
 
-1. "tagline": a punchy marketing tagline (≤12 words)
-2. "features": an array of exactly three feature phrases (≤5 words each)
-3. "why": a 2-3 sentence paragraph starting "Why PlayStation 5?" that sells the product
+1. "title": the name of the product (e.g. "Panther Lake").
+2. "tagline": a punchy marketing tagline (≤12 words).
+3. "features": an array of three feature phrases (≤5 words each).
+4. "why": a 2-3 sentence paragraph starting "Why <title>?" that sells the product.
 
 ANALYSIS:
 {analysis}
