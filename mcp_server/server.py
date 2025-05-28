@@ -63,7 +63,7 @@ def fibonacci(n: int) -> list[int]:
 )
 async def image_search(
     query: str,
-    per_page: int = 2,
+    per_page: int = 1,
     page: int = 1,
 ) -> list[str]:
     """
