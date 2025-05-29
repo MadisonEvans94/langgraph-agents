@@ -5,7 +5,6 @@ import os
 import uuid
 from langchain_community.document_loaders import PyPDFLoader
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from pydantic import BaseModel
 from dotenv import load_dotenv
 from langchain_mcp_adapters.tools import load_mcp_tools
 from contextlib import asynccontextmanager
@@ -14,9 +13,7 @@ from mcp.client.sse import sse_client
 from agent_resources.agent_factory import AgentFactory
 from agent_resources.agents.marketing_agent.marketing_supervisor_agent import MarketingSupervisorAgent
 from langchain_core.messages import HumanMessage, AIMessage
-
-from agent_resources.state_types import MarketingSupervisorState
-from .models import QueryRequest, QueryResponse
+from .models import QueryRequest, QueryResponse, MarketingSupervisorResponse
 from .utils import load_llm_configs
 from langgraph.checkpoint.memory import MemorySaver
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -36,18 +33,6 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")
 MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://mcp-server:8002/sse")
 all_configs = load_llm_configs()
 llm_configs = all_configs.get(LLM_PROVIDER if USE_LLM_PROVIDER else "vllm", {})
-
-shared_memory = MemorySaver()
-agent_factory = AgentFactory(memory=shared_memory)
-
-
-class MarketingAgentResponse(BaseModel):
-    html: str
-
-class MarketingSupervisorResponse(BaseModel):
-    html: str
-    html_path: str
-    image_url: str | None = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -77,8 +62,8 @@ async def lifespan(app: FastAPI):
         logger.info("MCP session closed")
 
 app = FastAPI(title="Agent MCP Client", lifespan=lifespan)
-
-
+shared_memory = MemorySaver()
+agent_factory = AgentFactory(memory=shared_memory)
 
 @app.post("/run_marketing_supervisor", response_model=MarketingSupervisorResponse)
 async def run_marketing_supervisor(file: UploadFile = File(...)):
@@ -98,12 +83,11 @@ async def run_marketing_supervisor(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to process PDF: {e}")
 
-    full_text = "\n\n".join(c.page_content for c in chunks)
+    full_text = "\n\n".join(chunk.page_content for chunk in chunks)
 
-    # Instantiate the sub-agent (marketing pipeline)
-    # TODO: add name field to all agents 
-    marketing_agent = AgentFactory(memory=shared_memory).factory(
-        agent_type="marketing_agent",
+    # Instantiate the sub-agent(s)
+    landing_page_agent = AgentFactory(memory=shared_memory).factory(
+        agent_type="landing_page_agent",
         thread_id=str(uuid.uuid4()),
         use_llm_provider=USE_LLM_PROVIDER,
         llm_configs=llm_configs,
@@ -111,30 +95,28 @@ async def run_marketing_supervisor(file: UploadFile = File(...)):
     )
 
 
-    # Wrap it in the MarketingSupervisorAgent
+    # Wrap in the MarketingSupervisorAgent
     supervisor = MarketingSupervisorAgent(
         llm_configs=llm_configs,
         thread_id=str(uuid.uuid4()),
         tools=app.state.tools,
-        sub_agents=[marketing_agent],
+        sub_agents=[landing_page_agent],
         use_llm_provider=USE_LLM_PROVIDER,
     )
 
     # Kick off the supervisor graph
-    sup_state: MarketingSupervisorState = {
+    sup_state = {
         "messages": [
-            HumanMessage(content="Create marketing collateral for the attached document.")
+            HumanMessage(content=f"Create a landing page for the attached document.\n\nDOCUMENT:\n{full_text}"),
         ],
-        "document_text": full_text,
-        "remaining_steps": 25
     }
     result_state = await supervisor.state_graph.ainvoke(sup_state)
 
-    # 5️⃣  Extract HTML emitted by the underlying marketing agent
+    # TODO: Make this more declarative instead of iterating through message list 
     html_msg = next(
-        m
-        for m in reversed(result_state["messages"])
-        if isinstance(m, AIMessage) and m.content.lstrip().startswith("<")
+        message
+        for message in reversed(result_state["messages"])
+        if isinstance(message, AIMessage) and message.content.lstrip().startswith("<")
     )
     html = html_msg.content
     image_url = result_state.get("image_url")
@@ -161,78 +143,6 @@ async def run_marketing_supervisor(file: UploadFile = File(...)):
         html_path=html_path,
         image_url=image_url,
     )
-
-@app.post("/run_marketing_agent", response_model=MarketingAgentResponse)
-async def run_marketing_agent(file: UploadFile = File(...)):
-    # 1. Basic validation + temp-save the upload
-    if file.content_type != "application/pdf":
-        raise HTTPException(status_code=415, detail="File must be a PDF")
-
-    suffix   = os.path.splitext(file.filename)[1] or ".pdf"
-    tmp_dir  = tempfile.mkdtemp(prefix="upload_")
-    pdf_path = os.path.join(tmp_dir, f"{uuid.uuid4()}{suffix}")
-    with open(pdf_path, "wb") as out:
-        shutil.copyfileobj(file.file, out)
-
-    # 2. Load & chunk PDF
-    try:
-        docs      = PyPDFLoader(pdf_path).load()
-        splitter  = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=200)
-        chunks    = splitter.split_documents(docs)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to process PDF: {e}")
-
-    # 3. Build the marketing pipeline agent
-    svc_agent = agent_factory.factory(
-        agent_type="marketing_agent",
-        thread_id=str(uuid.uuid4()),
-        use_llm_provider=USE_LLM_PROVIDER,
-        llm_configs=llm_configs,
-        tools=app.state.tools,
-    )
-
-    # 4. Invoke it on the whole PDF text
-    full_text   = "\n\n".join(c.page_content for c in chunks)
-    result_state = await svc_agent.ainvoke([HumanMessage(content=full_text)])
-
-    # 5. Pull the HTML snippet out of the returned messages
-    html_msg = next(
-        (
-            m for m in reversed(result_state["messages"])
-            if isinstance(m, AIMessage) and m.content.lstrip().startswith("<")
-        ),
-        None,
-    )
-    if html_msg is None:
-        raise HTTPException(status_code=500, detail="Agent did not return HTML")
-
-    html      = html_msg.content
-    image_url = result_state.get("image_url")  # convenience export
-
-    # 6. Persist HTML on the server (optional but handy)
-    OUTPUT_DIR = "/tmp/marketing_outputs"
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-    html_filename = f"{uuid.uuid4()}.html"
-    html_path     = os.path.join(OUTPUT_DIR, html_filename)
-    with open(html_path, "w", encoding="utf-8") as f:
-        f.write(html)
-
-    logger.success(f"HTML saved → {html_path}")
-
-    # 7. Clean up the upload tmpdir
-    try:
-        os.remove(pdf_path)
-        os.rmdir(tmp_dir)
-    except OSError:
-        pass
-
-    # 8. Send tidy JSON back to the caller
-    return MarketingAgentResponse(
-        html=html,
-        html_path=html_path,
-        image_url=image_url,
-    )
         
 @app.post("/invoke")
 async def ask(request: QueryRequest):
@@ -248,7 +158,7 @@ async def ask(request: QueryRequest):
         tools=tools,
     )
 
-    logger.info(f"🧠 Invoking agent: {agent_type}")
+    logger.info(f">>> Invoking agent: {agent_type}")
     ai_msg = await agent.ainvoke(request.user_query)
     return QueryResponse(
         response=ai_msg.content,

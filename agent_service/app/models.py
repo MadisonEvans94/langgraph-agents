@@ -11,3 +11,11 @@ class QueryResponse(BaseModel):
     response: str
     model_used: Optional[str] = ""              # or just str if always provided
     tools_used: List[str] = []
+
+class LandingPageAgentResponse(BaseModel):
+    html: str
+
+class MarketingSupervisorResponse(BaseModel):
+    html: str
+    html_path: str
+    image_url: str | None = None

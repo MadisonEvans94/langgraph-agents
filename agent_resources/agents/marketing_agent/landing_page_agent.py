@@ -1,4 +1,3 @@
-# agent_resources/agents/marketing_agent/supervisor_agent.py
 from __future__ import annotations
 
 import logging
@@ -10,7 +9,7 @@ from langchain_core.messages import AnyMessage, AIMessage, HumanMessage, SystemM
 from langgraph.graph import StateGraph, END
 from .constants import HTML_TEMPLATE
 from agent_resources.base_agent import Agent
-from agent_resources.state_types import MarketingAgentState
+from agent_resources.state_types import LandingPageAgentState
 from agent_resources.prompts import COMBINED_ANALYSIS_PROMPT, QUERY_EXTRACTION_PROMPT, JSON_EXTRACTION_PROMPT
 
 logger = logging.getLogger(__name__)
@@ -21,7 +20,7 @@ _TEMPLATE = jinja2.Template(HTML_TEMPLATE)
 
 # CORE NODES
 
-async def analysis_node(state: MarketingAgentState, *, llm) -> Dict:
+async def analysis_node(state: LandingPageAgentState, *, llm) -> Dict:
     prompt_stack = [
         SystemMessage(content=COMBINED_ANALYSIS_PROMPT),
         *state["messages"],
@@ -32,7 +31,7 @@ async def analysis_node(state: MarketingAgentState, *, llm) -> Dict:
     return {"messages": [resp], "analysis": resp.content}
 
 
-async def generate_query_node(state: MarketingAgentState, *, llm) -> Dict:
+async def generate_query_node(state: LandingPageAgentState, *, llm) -> Dict:
     prompt = QUERY_EXTRACTION_PROMPT.format(analysis=state["analysis"])
     msgs = [
         SystemMessage(content=prompt),
@@ -40,11 +39,11 @@ async def generate_query_node(state: MarketingAgentState, *, llm) -> Dict:
     ]
     resp = await llm.ainvoke(msgs) if hasattr(llm, "ainvoke") else llm.invoke(msgs)
     query = resp.content.strip()
-    logger.info(f"[MarketingAgent] generated image search query: {query}")
+    logger.info(f"[LandingPageAgent] generated image search query: {query}")
     return {"messages": [AIMessage(content=query)]}
 
 
-async def image_search_node(state: MarketingAgentState, *, image_tool) -> Dict:
+async def image_search_node(state: LandingPageAgentState, *, image_tool) -> Dict:
     query_txt = state["messages"][-1].content
     result = await image_tool.ainvoke({"query": query_txt}) if hasattr(image_tool, "ainvoke") else image_tool.invoke({"query": query_txt})
     url = (
@@ -52,15 +51,15 @@ async def image_search_node(state: MarketingAgentState, *, image_tool) -> Dict:
         else result.get("url", "") if isinstance(result, dict)
         else str(result)
     )
-    logger.info(f"[MarketingAgent] selected image URL: {url}")
+    logger.info(f"[LandingPageAgent] selected image URL: {url}")
     return {"messages": [AIMessage(content=f"[image_url] {url}")], "image_url": url}
 
 
-async def inject_summary_node(state: MarketingAgentState) -> Dict:
+async def inject_summary_node(state: LandingPageAgentState) -> Dict:
     return {"messages": [AIMessage(content=state["analysis"])]}
 
 
-async def render_html_node(state: MarketingAgentState, *, llm) -> Dict:
+async def render_html_node(state: LandingPageAgentState, *, llm) -> Dict:
     analysis  = state["messages"][-1].content
     image_url = state["image_url"]
 
@@ -82,7 +81,7 @@ async def render_html_node(state: MarketingAgentState, *, llm) -> Dict:
 
 # MAIN AGENT 
 
-class MarketingAgent(Agent):
+class LandingPageAgent(Agent):
     """
     analysis → generate_query → image_search → inject_summary
              → render_html → END
@@ -107,13 +106,13 @@ class MarketingAgent(Agent):
 
         self.image_tool = next((t for t in self.tools if getattr(t, "name", "") == "image_search"), None)
         if self.image_tool is None:
-            raise RuntimeError("MarketingAgent requires an 'image_search' MCP tool")
+            raise RuntimeError("LandingPageAgent requires an 'image_search' MCP tool")
 
         self.state_graph = self.build_graph()
 
     def build_graph(self):
         llm = self.llm_dict["default_llm"]
-        sg  = StateGraph(MarketingAgentState)
+        sg  = StateGraph(LandingPageAgentState)
 
         sg.add_node("analyze_text", partial(analysis_node,    llm=llm))
         sg.add_node("generate_query", partial(generate_query_node, llm=llm))
@@ -131,5 +130,5 @@ class MarketingAgent(Agent):
         return sg.compile(name=self.name)
 
     async def ainvoke(self, messages: List[AnyMessage]):
-        logger.debug(f"[MarketingAgent] starting with {len(messages)} input message(s)")
+        logger.debug(f"[LandingPageAgent] starting with {len(messages)} input message(s)")
         return await self.state_graph.ainvoke({"messages": messages})

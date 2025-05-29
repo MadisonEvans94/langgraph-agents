@@ -18,7 +18,7 @@ from agent_service.app.utils import load_llm_configs
 # ────────────────────────────────────────────────────────────
 class DummyImageSearchTool(BaseTool):
     """
-    Stub used only for visualising the MarketingAgent’s graph.
+    Stub used only for visualising the LandingPageAgent's graph.
     Returns a placeholder URL instead of hitting a real backend.
     """
     name: str = "image_search"
