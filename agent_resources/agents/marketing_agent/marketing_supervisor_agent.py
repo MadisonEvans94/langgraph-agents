@@ -1,18 +1,39 @@
 from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
+from langgraph_supervisor.handoff import (
+    _normalize_agent_name,
+    create_handoff_tool,
+)
 from langgraph_supervisor import create_supervisor
-from langgraph.graph import StateGraph
+from langchain_core.messages import HumanMessage        
 from agent_resources.base_agent import Agent
 from agent_resources.prompts import MARKETING_SUPERVISOR_PROMPT
+from agent_resources.state_types import MarketingSupervisorState  
+from langgraph.graph import StateGraph, START
 
 logger = logging.getLogger(__name__)
 
+
+# helper that ALWAYS injects the PDF 
+def _inject_doc(state: dict) -> dict:
+    doc = state.get("document_text")
+    if not doc:
+        return {}                       # nothing to update
+
+    # append text to the last user message (or create one)
+    for m in reversed(state["messages"]):
+        if isinstance(m, HumanMessage):
+            m.content += f"\n\nDOCUMENT:\n{doc}"
+            break
+    else:
+        state["messages"].append(HumanMessage(content=f"DOCUMENT:\n{doc}"))
+
+    return {"messages": state["messages"]}   
+
+
 class MarketingSupervisorAgent(Agent):
-    """
-    Top-level supervisor that routes work to a pool of marketing-focused agents.
-    Add more agents (e.g. SocialPostAgent, VideoAgent) to `sub_agents` as needed.
-    """
+    """Routes work to whichever marketing sub-agent is appropriate."""
 
     def __init__(
         self,
@@ -25,7 +46,6 @@ class MarketingSupervisorAgent(Agent):
         sub_agents: Optional[List[Agent]] = None,
         **kwargs,
     ):
-        # basic setup
         self.use_llm_provider = kwargs.get("use_llm_provider", False)
         self.name = name
         self.tools = tools or []
@@ -33,28 +53,40 @@ class MarketingSupervisorAgent(Agent):
         self.memory = memory
         self.thread_id = thread_id or "default"
 
-        # adopt or create sub-agents 
-        self.sub_agents: List[Agent] = sub_agents or []
+        self.sub_agents = sub_agents or []
         if not self.sub_agents:
-            raise ValueError(
-                "MarketingSupervisorAgent requires at least one sub-agent."
-            )
+            raise ValueError("MarketingSupervisorAgent needs at least one sub-agent")
 
-        self.state_graph = self.build_graph()
+        self.state_graph = self.build_graph() 
+
+    def _make_handoff_tools(self) -> list:
+        """Create one custom hand-off tool per sub-agent, carrying its description."""
+        handoff_tools = []
+        for agent in self.sub_agents:
+            handoff_tools.append(
+                create_handoff_tool(
+                    agent_name=agent.name,
+                    description=agent.description or f"Handoff to {agent.name}",  
+                    name=f"transfer_to_{_normalize_agent_name(agent.name)}",
+                )
+            )
+        return handoff_tools
 
     def build_graph(self) -> StateGraph:
-        """
-        Construct and compile the supervisor StateGraph using `create_supervisor`.
-        """
-        compiled_sub_graphs = [agent.state_graph for agent in self.sub_agents]
+        compiled = [a.state_graph for a in self.sub_agents]
 
-        sg: StateGraph = create_supervisor(
-            agents=compiled_sub_graphs,
+        sg = create_supervisor(
+            agents=compiled,
             model=self.llm_dict["default_llm"],
             prompt=MARKETING_SUPERVISOR_PROMPT,
+            tools=self._make_handoff_tools(), 
+            state_schema=MarketingSupervisorState,      
             supervisor_name=self.name,
             output_mode="last_message",
         )
-        return sg.compile(name=self.name)
+        # prepend the doc on every turn
+        sg.add_node("_inject_doc", _inject_doc)         
+        sg.add_edge(START, "_inject_doc")             
+        sg.add_edge("_inject_doc", self.name)           
 
-    # invoke / ainvoke / stream come from Agent.base
+        return sg.compile(name=self.name)

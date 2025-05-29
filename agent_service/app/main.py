@@ -12,6 +12,7 @@ from mcp import ClientSession
 from mcp.client.sse import sse_client
 from agent_resources.agent_factory import AgentFactory
 from agent_resources.agents.marketing_agent.marketing_supervisor_agent import MarketingSupervisorAgent
+from agent_resources.state_types import MarketingSupervisorState
 from langchain_core.messages import HumanMessage, AIMessage
 from .models import QueryRequest, QueryResponse, MarketingSupervisorResponse
 from .utils import load_llm_configs
@@ -103,13 +104,16 @@ async def run_marketing_supervisor(file: UploadFile = File(...)):
         sub_agents=[landing_page_agent],
         use_llm_provider=USE_LLM_PROVIDER,
     )
-
+    
     # Kick off the supervisor graph
-    sup_state = {
+    sup_state: MarketingSupervisorState = {
         "messages": [
-            HumanMessage(content=f"Create a landing page for the attached document.\n\nDOCUMENT:\n{full_text}"),
+            HumanMessage(content="Create a landing page for the attached document.")
         ],
+        "document_text": full_text,     # ← here
+        "remaining_steps": 25,          # optional guard
     }
+
     result_state = await supervisor.state_graph.ainvoke(sup_state)
 
     # TODO: Make this more declarative instead of iterating through message list 

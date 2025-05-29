@@ -14,6 +14,8 @@ class Agent(ABC):
     """
     Abstract base class for all agents.
     """
+    # def __init__(self, *, description: str | None = None) -> None:
+    #     self.description: str = description or ""
 
     def visualize_workflow(self, save_path: str = None):
         graph_image = self.state_graph.get_graph().draw_mermaid_png(

@@ -7,3 +7,8 @@ class LandingPageAgentState(TypedDict, total=False):
     messages: Annotated[List[AnyMessage], add_messages]
     analysis: str
     image_url: str
+
+class MarketingSupervisorState(TypedDict, total=False):
+    messages: Annotated[List[AnyMessage], add_messages]
+    document_text: str
+    remaining_steps: int     

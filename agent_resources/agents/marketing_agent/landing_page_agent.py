@@ -94,9 +94,11 @@ class LandingPageAgent(Agent):
         memory: Optional[Any] = None,
         thread_id: Optional[str] = None,
         tools: Optional[List[Any]] = None,
+        description: str = "Generate a responsive HTML landing page from the source document.", 
         name: str = "marketing_agent",
         **kwargs,
     ):
+        self.description = description 
         self.use_llm_provider = kwargs.get("use_llm_provider", False)
         self.name = name
         self.tools = tools or []
