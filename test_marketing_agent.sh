@@ -2,7 +2,7 @@
 set -euo pipefail
 
 PDF_PATH="sample_input.pdf"
-ENDPOINT="${1:-http://127.0.0.1:8001/run_marketing_agent}"
+ENDPOINT="${1:-http://127.0.0.1:8001/run_marketing_supervisor}"
 HTML_FILE="marketing_agent_output.html"
 
 [[ -f "$PDF_PATH" ]] || { echo "❌  PDF not found: $PDF_PATH" >&2; exit 1; }

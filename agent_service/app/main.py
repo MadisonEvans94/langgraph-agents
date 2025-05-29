@@ -3,9 +3,7 @@ import tempfile
 from loguru import logger
 import os
 import uuid
-from typing import List
 from langchain_community.document_loaders import PyPDFLoader
-from langchain_core.documents import Document
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -14,11 +12,13 @@ from contextlib import asynccontextmanager
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 from agent_resources.agent_factory import AgentFactory
+from agent_resources.agents.marketing_agent.marketing_supervisor_agent import MarketingSupervisorAgent
 from langchain_core.messages import HumanMessage, AIMessage
+
+from agent_resources.state_types import MarketingSupervisorState
 from .models import QueryRequest, QueryResponse
 from .utils import load_llm_configs
 from langgraph.checkpoint.memory import MemorySaver
-from pprint import pformat
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 # Setup logging
@@ -39,6 +39,15 @@ llm_configs = all_configs.get(LLM_PROVIDER if USE_LLM_PROVIDER else "vllm", {})
 
 shared_memory = MemorySaver()
 agent_factory = AgentFactory(memory=shared_memory)
+
+
+class MarketingAgentResponse(BaseModel):
+    html: str
+
+class MarketingSupervisorResponse(BaseModel):
+    html: str
+    html_path: str
+    image_url: str | None = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -69,8 +78,89 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Agent MCP Client", lifespan=lifespan)
 
-class MarketingAgentResponse(BaseModel):
-    html: str
+
+
+@app.post("/run_marketing_supervisor", response_model=MarketingSupervisorResponse)
+async def run_marketing_supervisor(file: UploadFile = File(...)):
+    if file.content_type != "application/pdf":
+        raise HTTPException(status_code=415, detail="File must be a PDF")
+
+    suffix = os.path.splitext(file.filename)[1] or ".pdf"
+    tmp_dir = tempfile.mkdtemp(prefix="upload_")
+    pdf_path = os.path.join(tmp_dir, f"{uuid.uuid4()}{suffix}")
+    with open(pdf_path, "wb") as out:
+        shutil.copyfileobj(file.file, out)
+
+    try:
+        docs = PyPDFLoader(pdf_path).load()
+        splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=200)
+        chunks = splitter.split_documents(docs)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to process PDF: {e}")
+
+    full_text = "\n\n".join(c.page_content for c in chunks)
+
+    # Instantiate the sub-agent (marketing pipeline)
+    # TODO: add name field to all agents 
+    marketing_agent = AgentFactory(memory=shared_memory).factory(
+        agent_type="marketing_agent",
+        thread_id=str(uuid.uuid4()),
+        use_llm_provider=USE_LLM_PROVIDER,
+        llm_configs=llm_configs,
+        tools=app.state.tools
+    )
+
+
+    # Wrap it in the MarketingSupervisorAgent
+    supervisor = MarketingSupervisorAgent(
+        llm_configs=llm_configs,
+        thread_id=str(uuid.uuid4()),
+        tools=app.state.tools,
+        sub_agents=[marketing_agent],
+        use_llm_provider=USE_LLM_PROVIDER,
+    )
+
+    # Kick off the supervisor graph
+    sup_state: MarketingSupervisorState = {
+        "messages": [
+            HumanMessage(content="Create marketing collateral for the attached document.")
+        ],
+        "document_text": full_text,
+        "remaining_steps": 25
+    }
+    result_state = await supervisor.state_graph.ainvoke(sup_state)
+
+    # 5️⃣  Extract HTML emitted by the underlying marketing agent
+    html_msg = next(
+        m
+        for m in reversed(result_state["messages"])
+        if isinstance(m, AIMessage) and m.content.lstrip().startswith("<")
+    )
+    html = html_msg.content
+    image_url = result_state.get("image_url")
+
+    # Persist + return
+    OUTPUT_DIR = "/tmp/marketing_outputs"
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    html_filename = f"{uuid.uuid4()}.html"
+    html_path = os.path.join(OUTPUT_DIR, html_filename)
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(html)
+
+    logger.success(f"Supervisor HTML saved → {html_path}")
+
+    # tidy-up temp dir
+    try:
+        os.remove(pdf_path)
+        os.rmdir(tmp_dir)
+    except OSError:
+        pass
+
+    return MarketingSupervisorResponse(
+        html=html,
+        html_path=html_path,
+        image_url=image_url,
+    )
 
 @app.post("/run_marketing_agent", response_model=MarketingAgentResponse)
 async def run_marketing_agent(file: UploadFile = File(...)):

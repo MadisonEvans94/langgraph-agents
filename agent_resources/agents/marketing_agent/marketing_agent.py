@@ -95,7 +95,7 @@ class MarketingAgent(Agent):
         memory: Optional[Any] = None,
         thread_id: Optional[str] = None,
         tools: Optional[List[Any]] = None,
-        name: str = "marketing_supervisor_agent",
+        name: str = "marketing_agent",
         **kwargs,
     ):
         self.use_llm_provider = kwargs.get("use_llm_provider", False)
@@ -127,8 +127,8 @@ class MarketingAgent(Agent):
         sg.add_edge("image_search", "inject_summary")
         sg.add_edge("inject_summary","render_html")
         sg.add_edge("render_html", END)
-
-        return sg.compile()
+        # TODO: add name=self.name to all 
+        return sg.compile(name=self.name)
 
     async def ainvoke(self, messages: List[AnyMessage]):
         logger.debug(f"[MarketingAgent] starting with {len(messages)} input message(s)")
