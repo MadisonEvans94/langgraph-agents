@@ -15,7 +15,14 @@ class QueryResponse(BaseModel):
 class LandingPageAgentResponse(BaseModel):
     html: str
 
+# agent_service/app/models.py
+
+
 class MarketingSupervisorResponse(BaseModel):
-    html: str
-    html_path: str
-    image_url: str | None = None
+    # NEW  ➜ always present (whatever the chosen sub-agent produced)
+    last_message: str
+
+    # If the landing-page agent was used we still return these:
+    html: Optional[str] = None
+    html_path: Optional[str] = None
+    image_url: Optional[str] = None

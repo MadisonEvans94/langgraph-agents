@@ -7,6 +7,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langchain.tools import BaseTool
 
 from .agents.marketing_agent.landing_page_agent import LandingPageAgent
+from .agents.marketing_agent.social_media_agent import SocialMediaAgent
 from .agents.react_agent.react_agent import ReactAgent
 from .agents.conversational_agent.conversational_agent import ConversationalAgent
 
@@ -21,7 +22,8 @@ class AgentFactory:
         self.agent_registry: Dict[str, Type[Agent]] = {
             "conversational_agent": ConversationalAgent,
             "react_agent": ReactAgent,
-            "landing_page_agent": LandingPageAgent 
+            "landing_page_agent": LandingPageAgent, 
+            "social_media_agent": SocialMediaAgent
         }
 
     def factory(

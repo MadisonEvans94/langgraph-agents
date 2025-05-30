@@ -4,7 +4,7 @@ from loguru import logger
 import os
 import uuid
 from langchain_community.document_loaders import PyPDFLoader
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from dotenv import load_dotenv
 from langchain_mcp_adapters.tools import load_mcp_tools
 from contextlib import asynccontextmanager
@@ -34,6 +34,8 @@ LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")
 MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://mcp-server:8002/sse")
 all_configs = load_llm_configs()
 llm_configs = all_configs.get(LLM_PROVIDER if USE_LLM_PROVIDER else "vllm", {})
+
+GLOBAL_THREAD_ID = "TEST"     # for testing
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -67,75 +69,84 @@ shared_memory = MemorySaver()
 agent_factory = AgentFactory(memory=shared_memory)
 
 @app.post("/run_marketing_supervisor", response_model=MarketingSupervisorResponse)
-async def run_marketing_supervisor(file: UploadFile = File(...)):
+async def run_marketing_supervisor(
+    file:   UploadFile = File(...),
+    prompt: str = Form("Create a landing page for the attached document.")
+):
+    # basic PDF-handling boilerplate
     if file.content_type != "application/pdf":
         raise HTTPException(status_code=415, detail="File must be a PDF")
 
-    suffix = os.path.splitext(file.filename)[1] or ".pdf"
-    tmp_dir = tempfile.mkdtemp(prefix="upload_")
+    suffix   = os.path.splitext(file.filename)[1] or ".pdf"
+    tmp_dir  = tempfile.mkdtemp(prefix="upload_")
     pdf_path = os.path.join(tmp_dir, f"{uuid.uuid4()}{suffix}")
     with open(pdf_path, "wb") as out:
         shutil.copyfileobj(file.file, out)
 
     try:
-        docs = PyPDFLoader(pdf_path).load()
+        docs     = PyPDFLoader(pdf_path).load()
         splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=200)
-        chunks = splitter.split_documents(docs)
+        chunks   = splitter.split_documents(docs)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to process PDF: {e}")
 
-    full_text = "\n\n".join(chunk.page_content for chunk in chunks)
+    full_text = "\n\n".join(c.page_content for c in chunks)
 
-    # Instantiate the sub-agent(s)
+    # build / reuse sub-agents  (all share GLOBAL_THREAD_ID)
     landing_page_agent = AgentFactory(memory=shared_memory).factory(
-        agent_type="landing_page_agent",
-        thread_id=str(uuid.uuid4()),
-        use_llm_provider=USE_LLM_PROVIDER,
-        llm_configs=llm_configs,
-        tools=app.state.tools
+        agent_type = "landing_page_agent",
+        thread_id = GLOBAL_THREAD_ID,
+        use_llm_provider = USE_LLM_PROVIDER,
+        llm_configs = llm_configs,
+        tools = app.state.tools,
     )
 
+    social_media_agent = AgentFactory(memory=shared_memory).factory(
+        agent_type = "social_media_agent",
+        thread_id = GLOBAL_THREAD_ID,
+        use_llm_provider = USE_LLM_PROVIDER,
+        llm_configs = llm_configs,
+        tools = [],
+    )
 
-    # Wrap in the MarketingSupervisorAgent
+    # supervisor  (same GLOBAL_THREAD_ID)
     supervisor = MarketingSupervisorAgent(
-        llm_configs=llm_configs,
-        thread_id=str(uuid.uuid4()),
-        tools=app.state.tools,
-        sub_agents=[landing_page_agent],
-        use_llm_provider=USE_LLM_PROVIDER,
+        llm_configs = llm_configs,
+        thread_id = GLOBAL_THREAD_ID,
+        tools = app.state.tools,
+        sub_agents = [landing_page_agent, social_media_agent],
+        use_llm_provider = USE_LLM_PROVIDER,
     )
-    
-    # Kick off the supervisor graph
+
+    # invoke supervisor – we pass only *this turn's* user request
     sup_state: MarketingSupervisorState = {
-        "messages": [
-            HumanMessage(content="Create a landing page for the attached document.")
-        ],
-        "document_text": full_text,     # ← here
-        "remaining_steps": 25,          # optional guard
+        "messages": [HumanMessage(content=prompt)],
+        "document_text": full_text,
+        "remaining_steps": 25,
     }
 
     result_state = await supervisor.state_graph.ainvoke(sup_state)
 
-    # TODO: Make this more declarative instead of iterating through message list 
-    html_msg = next(
-        message
-        for message in reversed(result_state["messages"])
-        if isinstance(message, AIMessage) and message.content.lstrip().startswith("<")
-    )
-    html = html_msg.content
+    # pick up the last assistant turn
+    last_ai_msg = next(m for m in reversed(result_state["messages"])
+                             if isinstance(m, AIMessage))
+    last_message_text = last_ai_msg.content.strip()
+
+    # persist HTML only when the response looks like a page
+    html      = None
+    html_path = None
     image_url = result_state.get("image_url")
 
-    # Persist + return
-    OUTPUT_DIR = "/tmp/marketing_outputs"
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-    html_filename = f"{uuid.uuid4()}.html"
-    html_path = os.path.join(OUTPUT_DIR, html_filename)
-    with open(html_path, "w", encoding="utf-8") as f:
-        f.write(html)
+    if last_message_text.lstrip().startswith("<"):
+        OUTPUT_DIR = "/tmp/marketing_outputs"
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+        html_path = os.path.join(OUTPUT_DIR, f"{uuid.uuid4()}.html")
+        with open(html_path, "w", encoding="utf-8") as f:
+            f.write(last_message_text)
+        html = last_message_text
+        logger.success(f"Supervisor HTML saved → {html_path}")
 
-    logger.success(f"Supervisor HTML saved → {html_path}")
-
-    # tidy-up temp dir
+    # clean-up tmp files
     try:
         os.remove(pdf_path)
         os.rmdir(tmp_dir)
@@ -143,9 +154,10 @@ async def run_marketing_supervisor(file: UploadFile = File(...)):
         pass
 
     return MarketingSupervisorResponse(
-        html=html,
-        html_path=html_path,
-        image_url=image_url,
+        last_message = last_message_text,
+        html = html,
+        html_path = html_path,
+        image_url = image_url,
     )
         
 @app.post("/invoke")
@@ -173,7 +185,6 @@ async def ask(request: QueryRequest):
 @app.get("/health")
 def health():
     return {"status": "ok"}
-
 
 if __name__ == "__main__":
     import uvicorn
