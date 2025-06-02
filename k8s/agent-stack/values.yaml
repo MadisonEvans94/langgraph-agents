@@ -9,7 +9,7 @@ classifier:
   containerPort: 8000
   servicePort: 8000
   nodeSelector:
-    nodetype: gaudi2-118
+    nodetype: gaudi2
   resources:
     requests:
       cpu: "500m"
@@ -45,7 +45,7 @@ agent:
     secretName: hf-token-all
     secretKey: HF_TOKEN
   nodeSelector:
-    nodetype: gaudi2-118
+    nodetype: gaudi2
   resources:
     requests:
       cpu: "1000m"

@@ -132,19 +132,17 @@ async def run_marketing_supervisor(
                              if isinstance(m, AIMessage))
     last_message_text = last_ai_msg.content.strip()
 
-    # persist HTML only when the response looks like a page
-    html      = None
+    html = result_state.get("html")
     html_path = None
     image_url = result_state.get("image_url")
 
-    if last_message_text.lstrip().startswith("<"):
-        OUTPUT_DIR = "/tmp/marketing_outputs"
+    if html: 
+        OUTPUT_DIR = os.getenv("OUTPUT_DIR", "/tmp/marketing_agent_outputs")
         os.makedirs(OUTPUT_DIR, exist_ok=True)
-        html_path = os.path.join(OUTPUT_DIR, f"{uuid.uuid4()}.html")
-        with open(html_path, "w", encoding="utf-8") as f:
-            f.write(last_message_text)
-        html = last_message_text
-        logger.success(f"Supervisor HTML saved → {html_path}")
+        html_path = os.path.join(OUTPUT_DIR, "marketing_brochure.html")
+        with open(html_path, "w", encoding="utf-8") as f: 
+            f.write(html)
+        logger.success(f"Supervisor HTML saved at {html_path}")
 
     # clean-up tmp files
     try:

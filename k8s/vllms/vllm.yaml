@@ -80,5 +80,5 @@ spec:
       imagePullSecrets:
       - name: dockerhub
       nodeSelector:
-        nodetype: gaudi2-118
+        nodetype: gaudi2
       terminationGracePeriodSeconds: 5

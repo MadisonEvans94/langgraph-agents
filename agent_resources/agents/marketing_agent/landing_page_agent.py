@@ -75,7 +75,10 @@ async def render_html_node(state: LandingPageAgentState, *, llm) -> Dict:
         features = data["features"],
         why      = data["why"],
     )
-    return {"messages": [AIMessage(content=html)]}
+    return {
+        "messages": [AIMessage(content=html)], 
+        "html": html, 
+        }
 
 
 

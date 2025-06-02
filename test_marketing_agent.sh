@@ -2,14 +2,17 @@
 set -euo pipefail
 
 PDF_PATH="sample_input.pdf"
-ENDPOINT="${1:-http://127.0.0.1:8001/run_marketing_supervisor}"
-PROMPT="${2:-Create a landing page for the attached document.}"
-HTML_FILE="marketing_agent_output.html"
+ENDPOINT="http://127.0.0.1:8001/run_marketing_supervisor"
+PROMPT="${1:-Create a landing page for the attached document.}"
 
-[[ -f "$PDF_PATH" ]] || { echo "❌  PDF not found: $PDF_PATH" >&2; exit 1; }
+[[ -f "$PDF_PATH" ]] || { echo "PDF not found: $PDF_PATH" >&2; exit 1; }
 
-printf "⏳ Waiting for agent-service"
-for i in {1..20}; do curl -s -o /dev/null "$ENDPOINT" && break; printf "."; sleep 0.5; done
+printf "Waiting for agent-service"
+for i in {1..20}; do
+  curl -s -o /dev/null "$ENDPOINT" && break
+  printf "."
+  sleep 0.5
+done
 echo
 
 json=$(curl -s -X POST \
@@ -17,13 +20,12 @@ json=$(curl -s -X POST \
         -F "prompt=${PROMPT}" \
         "$ENDPOINT")
 
-# always print the last assistant message
 last_msg=$(echo "$json" | jq -r '.last_message')
-echo -e "\n🗣  Last agent message:\n$last_msg\n"
+echo -e "\nLast agent message:\n$last_msg\n"
 
-# optionally save HTML if present
-html=$(echo "$json" | jq -r '.html // empty')
-if [[ -n "$html" ]]; then
-  printf '%s\n' "$html" > "$HTML_FILE"
-  echo "📄 HTML saved to $HTML_FILE"
+html_path=$(echo "$json" | jq -r '.html_path // empty')
+if [[ -n "$html_path" ]]; then
+  echo "HTML was saved by the agent at: $html_path"
+  # Open in browser if you like (uncomment for Linux/macOS):
+  # xdg-open "$html_path" >/dev/null 2>&1 &
 fi
