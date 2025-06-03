@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 def _inject_doc(state: dict) -> dict:
     doc = state.get("document_text")
     if not doc:
-        return {}                       # nothing to update
+        return {}                    
 
     # append text to the last user message (or create one)
     for m in reversed(state["messages"]):

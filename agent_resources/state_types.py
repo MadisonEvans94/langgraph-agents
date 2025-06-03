@@ -14,3 +14,4 @@ class MarketingSupervisorState(TypedDict, total=False):
     document_text: str
     remaining_steps: int     
     html: str
+
