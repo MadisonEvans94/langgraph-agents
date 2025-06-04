@@ -2,15 +2,17 @@
 # End-to-end smoke test for the marketing-agent stack
 set -euo pipefail
 
-# ──────────────── Paths ────────────────
+# ─────────── Path setup ───────────
 SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 
-COMPOSE_FILE="$REPO_ROOT/docker-compose.yaml"
+DATA_DIR="$SCRIPT_DIR/data"
+DEFAULT_PDF="$DATA_DIR/sample_input.pdf"
+
+COMPOSE_FILE="${COMPOSE_FILE:-$REPO_ROOT/docker-compose.yaml}"
 HEALTH_ENDPOINT="http://127.0.0.1:8001/health"
 SUP_ENDPOINT="http://127.0.0.1:8001/run_marketing_supervisor"
 
-DEFAULT_PDF="$REPO_ROOT/tests/data/sample_input.pdf"
 PDF_PATH="${PDF_PATH:-$DEFAULT_PDF}"
 PROMPT="${1:-Create a landing page for the attached document.}"
 
@@ -19,14 +21,13 @@ QUIET="${QUIET:-false}"
 
 [[ -f "$PDF_PATH" ]] || { echo "PDF not found: $PDF_PATH" >&2; exit 1; }
 
-# ───────── Build & Up ─────────
-echo "Building & starting stack…"
+# ─────────── Build & start ───────────
+echo "Building and starting Docker Compose stack"
 docker compose -f "$COMPOSE_FILE" up --build -d ${QUIET:+--quiet-pull}
 
-# Always tear down (even on Ctrl-C)
 trap 'docker compose -f "$COMPOSE_FILE" down -v' EXIT
 
-# ───────── Wait for Health ─────────
+# ─────────── Health check ───────────
 printf "Waiting for agent-service"
 expiry=$((SECONDS + TIMEOUT_SEC))
 until curl -sf "$HEALTH_ENDPOINT" >/dev/null; do
@@ -34,34 +35,35 @@ until curl -sf "$HEALTH_ENDPOINT" >/dev/null; do
   printf "."
   sleep 1
 done
+echo " ready"
 
-# ───────── POST Request ─────────
-echo "POSTing PDF → supervisor"
+# ─────────── POST request ───────────
+echo "Uploading PDF to marketing supervisor endpoint"
 resp=$(curl -s -X POST \
           -F "file=@${PDF_PATH};type=application/pdf" \
           -F "prompt=${PROMPT}" \
           "$SUP_ENDPOINT")
 
-jq -e '.' <<<"$resp" >/dev/null || { echo "Non-JSON response"; exit 1; }
+jq -e '.' <<<"$resp" >/dev/null || { echo "Response is not valid JSON"; exit 1; }
 
 last_msg=$(jq -r '.last_message' <<<"$resp")
 remote_html=$(jq -r '.html_path // empty' <<<"$resp")
 
 echo -e "\nLast supervisor message:\n$last_msg\n"
 
-# ───────── Copy HTML artefact ─────────
+# ─────────── Copy HTML artifact ───────────
 if [[ -n "$remote_html" ]]; then
   file_name=$(basename "$remote_html")
   host_html="$REPO_ROOT/agent_service/tmp/marketing_agent_outputs/$file_name"
-  dest_html="$REPO_ROOT/tests/data/$file_name"
+  dest_html="$DATA_DIR/$file_name"
 
   if [[ -f "$host_html" ]]; then
-    mkdir -p "$REPO_ROOT/tests/data"
+    mkdir -p "$DATA_DIR"
     cp "$host_html" "$dest_html"
-    echo "HTML copied to: $dest_html"
+    echo "Generated HTML copied to: $dest_html"
   else
     echo "Expected HTML not found at $host_html"
   fi
 fi
 
-echo "End-to-end test succeeded"
+echo "End-to-end test completed successfully"
