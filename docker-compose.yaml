@@ -13,8 +13,8 @@ services:
 
   agent-service:
     build:
-      context: .
-      dockerfile: Dockerfile.agent-service
+      context: .                                   
+      dockerfile: ./agent_service/Dockerfile
     container_name: agent-service
     depends_on:
       - mcp-server
