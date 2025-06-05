@@ -10,19 +10,32 @@ runtime code clean and avoids implying that the Bash driver is part of the unit
 agent_resources/
 └─ deployment/
    ├─ data/
-   │  └─ sample_input.pdf        # sample PDF used by the smoke test
-   ├─ e2e_marketing_agent.sh     # driver script
-   └─ README.md                  # this document
+   │  └─ sample_input.pdf        # sample PDF to be ingested 
+   ├─ e2e_marketing_agent.sh     # end to end script
+   └─ README.md               
 ```
 
 ---
 
-## Marketing‑Agent Pipeline
+## Quick Start 
 
-`e2e_marketing_agent.sh` exercises the end‑to‑end flow **“PDF → supervisor →
-sub‑agent → HTML”** inside a disposable Compose stack.
+1. Ensure that you have a `.env` file at the project root with `OPENAI_API_KEY` set. There is a template file to help with this. Run `cp .env.template .env` from the project root and then fill out the key as necessary. 
+2. Navigate to `agent_service/deployment`. Run `./e2e_marketing_agent.sh` to execute the marketing agent e2e pipeline. This script does the following
+- calls `docker compose up --build` on the `docker-compose.yaml` file at the project root (this will spin up the agent service container and the mcp server container and set up a volume for the placement of the .html file that gets written by the agent)
+- sends the `sample_input.pdf` file and user prompt to the `/run_marketing_supervisor` endpoint in the agent service. This kicks off the execution of the marketing supervisor agent
+- writes the final html output of the agent to the `agent_service/deployment/data` directory 
+- returns a status response to the terminal regarding the results of the run 
+- tears down the containers 
 
-### Workflow overview
+> For more information on the different code and dependencies used, refer to the following READMEs 
+
+- [agent service api](agent_service/app/README.md)
+- [mock mcp server](mcp_server/README.md)
+- [agent resources](agent_resources/README.md)
+
+---
+
+## Workflow Overview 
 
 1. **Build and start Compose stack**
 
@@ -56,15 +69,6 @@ sub‑agent → HTML”** inside a disposable Compose stack.
 ```bash
 # From repository root
 ./agent_resources/deployment/e2e_marketing_agent.sh
-```
-
-Optional overrides:
-
-```bash
-PDF_PATH=docs/brochure.pdf \
-TIMEOUT_SEC=90            \
-QUIET=true                \
-./agent_resources/deployment/e2e_marketing_agent.sh "Generate social posts"
 ```
 
 * `PDF_PATH` – path to a different PDF document.
@@ -104,5 +108,4 @@ self‑contained.
 * Place additional end‑to‑end drivers beside `e2e_marketing_agent.sh` and
   document them here.
 * Store large or binary fixtures under `agent_resources/deployment/data/`.
-* **Unit / integration tests** that follow pytest conventions should remain in
-  the top‑level `tests/` folder so CI discovery continues to work as before.
+
